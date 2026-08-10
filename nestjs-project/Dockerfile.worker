@@ -1,0 +1,10 @@
+FROM node:25.6.0-slim
+
+# The API image deliberately has no FFmpeg — heavy media work lives here (TD-04).
+RUN apt update && apt install -y ffmpeg procps && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /home/node/app
+
+USER node
+
+CMD [ "npx", "ts-node", "-r", "tsconfig-paths/register", "src/worker/main.ts" ]
