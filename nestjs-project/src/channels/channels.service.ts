@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, QueryFailedError } from 'typeorm';
 import { appendRandomSuffix, sanitizeNickname } from './nickname.util';
+import { ChannelNotFoundException } from './channels.exceptions';
 import { Channel } from './entities/channel.entity';
 
 const PG_UNIQUE_VIOLATION = '23505';
@@ -58,5 +59,20 @@ export class ChannelsService {
         'Nickname conflict could not be resolved after max retries',
       );
     });
+  }
+
+  async findByUserId(userId: string): Promise<Channel | null> {
+    return this.dataSource
+      .getRepository(Channel)
+      .findOne({ where: { user_id: userId } });
+  }
+
+  /** Every registered user owns a channel, so absence here is exceptional. */
+  async getByUserId(userId: string): Promise<Channel> {
+    const channel = await this.findByUserId(userId);
+    if (!channel) {
+      throw new ChannelNotFoundException();
+    }
+    return channel;
   }
 }
