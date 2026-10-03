@@ -34,6 +34,7 @@ const VALID_BODY = {
 };
 
 const TEN_GIB = 10737418240;
+const FIVE_GIB = 5368709120;
 
 describe('videos-initiate-upload', () => {
   let app: INestApplication<App>;
@@ -240,6 +241,16 @@ describe('videos-initiate-upload', () => {
 
     const tinyPart = await post({ ...VALID_BODY, part_size_bytes: 1048576 });
     expect(tinyPart.status).toBe(400);
+
+    // Above 5 GiB the storage refuses the part (EntityTooLarge) only once the
+    // browser is already sending it.
+    const hugePart = await post({
+      ...VALID_BODY,
+      size_bytes: TEN_GIB,
+      part_size_bytes: FIVE_GIB + 1,
+    });
+    expect(hugePart.status).toBe(400);
+    expect(JSON.stringify(hugePart.body)).toContain('part_size_bytes');
 
     await expect(countVideos()).resolves.toBe(0);
   }, 30000);
