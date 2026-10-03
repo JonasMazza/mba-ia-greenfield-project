@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 11/17 completed
+**SIs:** 12/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -81,9 +81,12 @@
   - O AC de build fica coberto quando a tela importar o uploader (SI-03.15) e na verificação final — até lá nenhum módulo do app o importa.
 
 ### SI-03.12 — Cliente de upload multipart headless com Uppy (Verification)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 5 passing (`lib/videos/__tests__/uploader.integration.test.ts`)
+- **Observations:**
+  - O plano de controle roda de verdade no teste: uma ponte MSW entrega cada `/api/videos/**` que o uploader chama ao Route Handler real (sessão via `session-harness.ts`), e o upstream que ele chama é respondido pelo fixture compartilhado. Assim os números do AC (1 draft, 3 assinaturas de uma parte, 3 `PUT`s, 1 `complete` com ETags em ordem) atravessam uploader → BFF → upstream fake.
+  - Cenário extra além dos planejados: um envelope de erro do BFF (`toolarge.mp4` → 413) chega ao evento `error` com `status` e `code`, sem nenhum `PUT` — é o mapeamento que a tela (SI-03.15) consome.
+  - O interceptor de XHR do MSW entrega uma resposta tardia até a um XHR já abortado (um browser real não faz isso) e isso disparava o handler de progresso do Uppy sobre um arquivo já removido; o cenário de cancelamento deixa o `PUT` sem resposta em vez de liberá-lo depois do abort.
 
 ### SI-03.13 — Hook de polling do status de processamento (Setup)
 - **Status:** pending
