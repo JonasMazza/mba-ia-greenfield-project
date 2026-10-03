@@ -23,11 +23,14 @@ vi.mock("next/headers", () => ({
 
 let authedUpstream: typeof import("@/lib/api/authed").authedUpstream;
 let optionalAuthedUpstream: typeof import("@/lib/api/authed").optionalAuthedUpstream;
+let optionalAuthedUpstreamReadOnly: typeof import("@/lib/api/authed").optionalAuthedUpstreamReadOnly;
 let setSession: typeof import("@/lib/auth/session").setSession;
 let getSession: typeof import("@/lib/auth/session").getSession;
 
 beforeAll(async () => {
-  ({ authedUpstream, optionalAuthedUpstream } = await import("@/lib/api/authed"));
+  ({ authedUpstream, optionalAuthedUpstream, optionalAuthedUpstreamReadOnly } = await import(
+    "@/lib/api/authed"
+  ));
   ({ setSession, getSession } = await import("@/lib/auth/session"));
 });
 
@@ -163,5 +166,51 @@ describe("optionalAuthedUpstream", () => {
     await optionalAuthedUpstream(call);
 
     expect(seen).toEqual([{ Authorization: "Bearer token-xyz" }]);
+  });
+});
+
+describe("optionalAuthedUpstreamReadOnly", () => {
+  it("injects the bearer when a session exists", async () => {
+    await signIn("token-rsc");
+    server.use(http.get(`${env.API_URL}/probe`, () => HttpResponse.json({ ok: true })));
+    const { call, seen } = probeCall();
+
+    const result = await optionalAuthedUpstreamReadOnly(call);
+
+    expect(result.data).toEqual({ ok: true });
+    expect(seen).toEqual([{ Authorization: "Bearer token-rsc" }]);
+  });
+
+  it("never refreshes nor writes the session on an upstream 401 — it retries anonymously", async () => {
+    await signIn("stale-token");
+    const cookiesBefore = new Map(cookieMap);
+    let refreshCalls = 0;
+    server.use(
+      http.get(`${env.API_URL}/probe`, ({ request }) =>
+        request.headers.get("authorization")
+          ? HttpResponse.json(
+              { statusCode: 401, error: "UNAUTHORIZED", message: "expired" },
+              { status: 401 }
+            )
+          : HttpResponse.json({ ok: true })
+      ),
+      http.post(`${env.API_URL}/auth/refresh`, () => {
+        refreshCalls += 1;
+        return HttpResponse.json({
+          access_token: "new-fixture-access-token",
+          refresh_token: "new-fixture-refresh-token",
+        });
+      })
+    );
+    const { call, seen } = probeCall();
+
+    const result = await optionalAuthedUpstreamReadOnly(call);
+
+    // A Server Component cannot write cookies: a rotated pair would be lost and
+    // the next refresh would present a revoked token (reuse → forced logout).
+    expect(refreshCalls).toBe(0);
+    expect(cookieMap).toEqual(cookiesBefore);
+    expect(seen).toEqual([{ Authorization: "Bearer stale-token" }, {}]);
+    expect(result.data).toEqual({ ok: true });
   });
 });
