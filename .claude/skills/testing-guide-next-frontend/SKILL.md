@@ -20,7 +20,7 @@ The contract is fixed by `next-frontend/CLAUDE.md` § "Testing" and the four `.c
 - **Playwright** runs end-to-end tests (`*.e2e-spec.ts` under `tests/`) — see §6 and `references/gotchas.md` for the containerized architecture.
 - **MSW (`msw/node`)** is the **only** fake for the NestJS upstream API. **No** Vitest test may open a real network connection to the upstream host (`.claude/rules/next-frontend-testing.md`).
 
-> **Tooling status (2026-05):** Vitest + MSW are fully wired — `vitest.config.ts`, `mocks/setup.ts`, `mocks/server.ts`, the per-domain handler barrel, and the `npm test` script all exist and run. **Playwright is not yet installed** (no `@playwright/test`, no `playwright.config.ts`, no `test:e2e` script). E2E recipes below are the binding contract for browser flows; the first phase that needs a browser test triggers the Playwright install — no rule below changes when it lands.
+> **Tooling status (2026-10):** Vitest + MSW are fully wired — `vitest.config.ts`, `mocks/setup.ts`, `mocks/server.ts`, the per-domain handler barrel, and the `npm test` script all exist and run. Playwright is installed too — `@playwright/test`, `playwright.config.ts` (no `webServer`) and the `test:e2e` script exist, and the specs live in `tests/*.e2e-spec.ts`. It runs on the host against the containerized `next dev` started with `MSW_ENABLED=true`; the host needs the browser build that matches the installed version (`npx playwright install --only-shell chromium`).
 
 ## 1. Testability Foundations
 
