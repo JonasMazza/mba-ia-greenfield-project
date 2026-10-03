@@ -246,6 +246,14 @@ This is a genuine gap in the shipped contract, not a frontend styling question, 
 
 **Decision:** C — a stable same-origin BFF URL that issues a fresh redirect per request. Download is the same mechanism with `downloadFilename` set.
 
+**Revision (2026-10-03) — C stays, B added as the Chrome recovery.** The manual smoke (`phase-03-videos-frontend/progress.md`, SI-03.17) refuted the premise that "every subsequent range request repeats the handshake": Chrome follows the 307 once and reuses the *redirected* storage URL for every later `Range` request of the same `<video>`. Once the playback TTL passes, a seek outside the buffer retries the expired URL for about 30 s and then fails with `MEDIA_ERR_NETWORK`; nothing goes back to `/api/videos/{publicId}/stream`. The Cons of C anticipated exactly this ("a browser … that mishandles redirects on media would need Option B as fallback"), and Chrome is that browser.
+
+- **Kept:** Option C as the contract — stable same-origin URL, per-request authorization, short TTL, bytes never through Node. It still gives every *load* a URL signed seconds ago, which is what makes B cheap.
+- **Added:** Option B, reduced to the case C cannot cover. `components/videos/stream-player.tsx` wraps the native `<video>` (TD-07 is unchanged): on `MEDIA_ERR_NETWORK` it calls `load()` on the same same-origin `src` — which goes through the BFF and gets a fresh redirect — and restores `currentTime` and the playing state on `loadedmetadata`. The playing state is tracked from `play`/`pause` events, because Chrome sets `paused` before firing `error` without a `pause` event. A second failure within 10 s is left to the native error (video gone or access lost), so recovery cannot loop.
+- **Rejected again:** Option A. The URL is reusable by anyone holding it, and no TTL is long enough for a paused tab.
+- **Verified** in real Chrome against the real stack with `STORAGE_PLAYBACK_URL_TTL_SECONDS=20`: play, pause past the TTL, seek to 85 %. A plain `<video>` fails with `MEDIA_ERR_NETWORK` and never calls the BFF again; `StreamPlayer` makes one new BFF request after the error and is playing again at the seek target 5 s later.
+- **Known cost:** the viewer waits through Chrome's ~30 s of retries before the error that triggers recovery. Fase 05 inherits `StreamPlayer` and may shorten that (for example, reloading proactively when playback resumes after a pause longer than the TTL); the recovery stays as the safety net either way.
+
 ---
 
 ## TD-07: Playback & Download Contract for This Slice
@@ -320,6 +328,6 @@ This is a genuine gap in the shipped contract, not a frontend styling question, 
 | TD-03 | Cross-layer | Part-URL signing cadence (upload control-plane contract) | A (sign one part at a time, on demand) | A |
 | TD-04 | Cross-layer | Upload resume across page reload (missing ETag contract) | B (backend exposes `GET /videos/:publicId/upload/parts`) | B |
 | TD-05 | Frontend | Processing-status tracking on the client | A (hand-rolled hook; revisit at Fase 04) | A |
-| TD-06 | Cross-layer | Playback URL lifetime vs. session length | C (stable same-origin BFF URL, 307 per request) | C |
+| TD-06 | Cross-layer | Playback URL lifetime vs. session length | C (stable same-origin BFF URL, 307 per request) | C + B (Chrome recovery, revised 2026-10-03) |
 | TD-07 | Cross-layer | Playback & download contract for this slice | A (native `<video controls>`; defer player to Fase 05) | A |
 | TD-08 | Frontend | Test strategy for the direct-to-storage byte path | A + manual smoke (Option B as follow-up) | A + C |
