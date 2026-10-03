@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 6/17 completed
+**SIs:** 7/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -45,9 +45,12 @@
   - O fake do storage responde também ao `OPTIONS` e envia `Access-Control-Expose-Headers: ETag` — sem isso um `PUT` cross-origin feito pelo browser (ou pelo XHR do jsdom) não consegue ler o ETag, que é exatamente o requisito que o MinIO real atende via `MINIO_API_CORS_ALLOW_ORIGIN`.
 
 ### SI-03.7 — BFF: início do upload e assinatura/listagem de partes
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 16 passing (`lib/api/__tests__/authed.integration.test.ts`, `app/api/videos/__tests__/route.integration.test.ts`, `app/api/videos/[publicId]/upload/parts/__tests__/route.integration.test.ts`)
+- **Observations:**
+  - `authedUpstream` devolve a mesma tripla `{ data, error, response }` do `openapi-fetch` também no caso "sem sessão" (erro 401 fabricado pelo BFF), então todo Route Handler trata os dois casos com um único `if (error)`.
+  - O `withRefresh` da Fase 02 trabalha com `Response`; o helper o reaproveita capturando a tripla da última tentativa e relendo a sessão a cada tentativa, porque o refresh rotaciona o token entre elas.
+  - Em Next 16 os `params` de rota dinâmica são `Promise` — os handlers fazem `await params`, e os testes passam `{ params: Promise.resolve({ publicId }) }`.
 
 ### SI-03.8 — BFF: finalização e abort do upload
 - **Status:** pending
