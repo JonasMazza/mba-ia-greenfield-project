@@ -12,6 +12,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import storageConfig from '../../config/storage.config';
+import { LIST_PARTS_PAGE_SIZE } from '../videos.constants';
 
 export interface CompletedPart {
   PartNumber: number;
@@ -189,26 +190,33 @@ export class ObjectStorageService implements OnModuleDestroy {
     key: string,
     uploadId: string,
   ): Promise<UploadedPart[]> {
-    const response = await this.client.send(
-      new ListPartsCommand({
-        Bucket: this.rawBucket,
-        Key: key,
-        UploadId: uploadId,
-      }),
-    );
-    return (response.Parts ?? [])
-      .flatMap((part) =>
-        part.PartNumber !== undefined && part.ETag !== undefined
-          ? [
-              {
-                part_number: part.PartNumber,
-                etag: part.ETag,
-                size: part.Size ?? 0,
-              },
-            ]
-          : [],
-      )
-      .sort((a, b) => a.part_number - b.part_number);
+    const parts: UploadedPart[] = [];
+    let marker: string | undefined;
+
+    // A 10 GiB upload at the 5 MiB floor has 2048 parts — more than one page.
+    do {
+      const response = await this.client.send(
+        new ListPartsCommand({
+          Bucket: this.rawBucket,
+          Key: key,
+          UploadId: uploadId,
+          MaxParts: LIST_PARTS_PAGE_SIZE,
+          PartNumberMarker: marker,
+        }),
+      );
+      for (const part of response.Parts ?? []) {
+        if (part.PartNumber !== undefined && part.ETag !== undefined) {
+          parts.push({
+            part_number: part.PartNumber,
+            etag: part.ETag,
+            size: part.Size ?? 0,
+          });
+        }
+      }
+      marker = response.IsTruncated ? response.NextPartNumberMarker : undefined;
+    } while (marker !== undefined);
+
+    return parts.sort((a, b) => a.part_number - b.part_number);
   }
 
   /** Small worker output (thumbnails) — video bytes never travel through the app. */

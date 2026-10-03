@@ -23,6 +23,7 @@ import {
   FileTooLargeException,
   InvalidUploadStateException,
   UnsupportedMediaTypeException,
+  UploadSizeMismatchException,
   VideoNotFoundException,
   VideoNotReadyException,
 } from './videos.exceptions';
@@ -109,6 +110,9 @@ describe('VideosService (integration)', () => {
     content_type: 'video/mp4',
     size_bytes: 50 * 1024 * 1024,
   };
+
+  /** Declares exactly the single 5 MiB part `uploadOnePart` sends. */
+  const onePartDto = { ...validDto, size_bytes: FIVE_MIB };
 
   /** Tracks the multipart upload the service opened so afterAll can release it. */
   async function trackUpload(publicId: string): Promise<void> {
@@ -284,7 +288,7 @@ describe('VideosService (integration)', () => {
 
   it('should reject listing parts once the upload is no longer a draft', async () => {
     const { userId } = await createUserWithChannel();
-    const initiated = await service.initiateUpload(userId, validDto);
+    const initiated = await service.initiateUpload(userId, onePartDto);
     const part = await uploadOnePart(userId, initiated.public_id);
     await service.completeUpload(userId, initiated.public_id, {
       parts: [part],
@@ -297,7 +301,7 @@ describe('VideosService (integration)', () => {
 
   it('should move the draft to processing and enqueue the job atomically', async () => {
     const { userId } = await createUserWithChannel();
-    const initiated = await service.initiateUpload(userId, validDto);
+    const initiated = await service.initiateUpload(userId, onePartDto);
     const part = await uploadOnePart(userId, initiated.public_id);
 
     const result = await service.completeUpload(userId, initiated.public_id, {
@@ -324,9 +328,47 @@ describe('VideosService (integration)', () => {
     expect(jobs[0].data).toEqual({ videoId: video.id });
   }, 60000);
 
-  it('should leave no job behind when the status transition fails', async () => {
+  it('should refuse to complete when the stored parts exceed the declared size', async () => {
+    const { userId } = await createUserWithChannel();
+    // The ceiling is checked on the declared size, so an honest-looking
+    // declaration must not let a bigger object through.
+    const initiated = await service.initiateUpload(userId, {
+      ...validDto,
+      size_bytes: 1024 * 1024,
+    });
+    await trackUpload(initiated.public_id);
+    const part = await uploadOnePart(userId, initiated.public_id);
+
+    await expect(
+      service.completeUpload(userId, initiated.public_id, { parts: [part] }),
+    ).rejects.toBeInstanceOf(UploadSizeMismatchException);
+
+    const video = await videoRepository.findOneByOrFail({
+      public_id: initiated.public_id,
+    });
+    expect(video.status).toBe(VideoStatus.DRAFT);
+    expect(video.upload_id).toBe(initiated.upload_id);
+    const jobs = await dataSource.query<unknown[]>(
+      `SELECT id FROM pgboss.job WHERE name = $1`,
+      [VIDEO_QUEUES.PROCESS],
+    );
+    expect(jobs).toHaveLength(0);
+  }, 60000);
+
+  it('should refuse to complete when the stored parts fall short of the declared size', async () => {
     const { userId } = await createUserWithChannel();
     const initiated = await service.initiateUpload(userId, validDto);
+    await trackUpload(initiated.public_id);
+    const part = await uploadOnePart(userId, initiated.public_id);
+
+    await expect(
+      service.completeUpload(userId, initiated.public_id, { parts: [part] }),
+    ).rejects.toBeInstanceOf(UploadSizeMismatchException);
+  }, 60000);
+
+  it('should leave no job behind when the status transition fails', async () => {
+    const { userId } = await createUserWithChannel();
+    const initiated = await service.initiateUpload(userId, onePartDto);
     const part = await uploadOnePart(userId, initiated.public_id);
 
     jest
@@ -351,7 +393,7 @@ describe('VideosService (integration)', () => {
 
   it('should reject a second complete on an upload already finalized', async () => {
     const { userId } = await createUserWithChannel();
-    const initiated = await service.initiateUpload(userId, validDto);
+    const initiated = await service.initiateUpload(userId, onePartDto);
     const part = await uploadOnePart(userId, initiated.public_id);
     await service.completeUpload(userId, initiated.public_id, {
       parts: [part],
@@ -364,7 +406,7 @@ describe('VideosService (integration)', () => {
 
   it('should reject presigning parts once the upload is no longer a draft', async () => {
     const { userId } = await createUserWithChannel();
-    const initiated = await service.initiateUpload(userId, validDto);
+    const initiated = await service.initiateUpload(userId, onePartDto);
     const part = await uploadOnePart(userId, initiated.public_id);
     await service.completeUpload(userId, initiated.public_id, {
       parts: [part],
@@ -397,7 +439,7 @@ describe('VideosService (integration)', () => {
 
   it('should reject aborting a video that is no longer a draft', async () => {
     const { userId } = await createUserWithChannel();
-    const initiated = await service.initiateUpload(userId, validDto);
+    const initiated = await service.initiateUpload(userId, onePartDto);
     const part = await uploadOnePart(userId, initiated.public_id);
     await service.completeUpload(userId, initiated.public_id, {
       parts: [part],

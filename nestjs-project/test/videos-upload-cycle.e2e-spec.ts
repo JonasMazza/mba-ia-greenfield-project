@@ -127,11 +127,13 @@ describe('videos-upload-cycle', () => {
     return (login.body as { access_token: string }).access_token;
   }
 
-  async function initiateUpload(): Promise<InitiateUploadBody> {
+  async function initiateUpload(
+    body: object = VALID_BODY,
+  ): Promise<InitiateUploadBody> {
     const res = await request(app.getHttpServer())
       .post('/videos')
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send(VALID_BODY);
+      .send(body);
 
     expect(res.status).toBe(201);
     return res.body as InitiateUploadBody;
@@ -293,6 +295,26 @@ describe('videos-upload-cycle', () => {
     const video = await findVideo(initiated.public_id);
     expect(video?.status).toBe(VideoStatus.PROCESSING);
     await expect(countProcessJobs()).resolves.toBe(1);
+  }, 60000);
+
+  it('rejects-complete-when-parts-differ-from-declared-size', async () => {
+    // Declares 1 MiB but sends a 5 MiB part — the ceiling check at initiate
+    // only ever saw the declared size.
+    const initiated = await initiateUpload({
+      ...VALID_BODY,
+      size_bytes: 1024 * 1024,
+    });
+    const parts = await uploadParts(initiated.public_id);
+
+    const res = await completeUpload(initiated.public_id, { parts });
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorBody).error).toBe('UPLOAD_SIZE_MISMATCH');
+
+    const video = await findVideo(initiated.public_id);
+    expect(video?.status).toBe(VideoStatus.DRAFT);
+    expect(video?.upload_id).toBe(initiated.upload_id);
+    await expect(countProcessJobs()).resolves.toBe(0);
   }, 60000);
 
   it('rejects-malformed-parts-payload', async () => {
