@@ -112,6 +112,10 @@ _Subprojects in scope:_
 
 **Decision:** B (presigned S3 multipart — browser → MinIO, resumable)
 
+**Revisions:**
+
+- 2026-08-22 — Browser-facing half of the handshake revised by `phase-03-videos-frontend/TD-01` (presigned part URLs must be signed for a browser-reachable host, not the `minio:9000` Compose name) and `phase-03-videos-frontend/TD-04` (the missing per-part ETag contract, now exposed via an owner-scoped `GET /videos/:publicId/upload/parts`). The protocol choice itself — presigned S3 multipart, bytes never through Nest or Next — is unchanged. Rationale: browser-facing half of the contract revised by the frontend slice.
+
 ---
 
 ## TD-04: Video Worker Runtime & Deployment
@@ -230,6 +234,10 @@ _Subprojects in scope:_
 **Recommendation:** **Option B (presigned MinIO GET URL, short TTL)** as the primary playback path; **HLS (Option C) is the roadmap target** once the worker's transcoding matures. MinIO serves Range natively against presigned URLs, so seeking/partial playback works with zero API byte-proxying — decisive at 10GB where Option A makes Node the bottleneck. Access stays correct because the API authorizes each URL issuance (public → anyone; unlisted → only visitors holding the `/watch/:publicId` link), with short TTL and a private bucket. Keep the API-proxy pattern available only for cases needing hard per-byte gating.
 
 **Decision:** B (presigned MinIO GET URL, short TTL — HLS as roadmap)
+
+**Revisions:**
+
+- 2026-08-22 — Browser-facing playback path revised by `phase-03-videos-frontend/TD-06`: the browser is handed a stable same-origin BFF URL that issues a fresh redirect per request, instead of a raw presigned URL. The short TTL and the "zero API byte-proxying" property are both preserved — Node still stays out of the byte path — and issuance-time-only authorization is upgraded to per-request authorization. `phase-03-videos-frontend/TD-01` additionally revises which host the redirect target names. Rationale: browser-facing half of the contract revised by the frontend slice.
 
 ---
 

@@ -76,10 +76,11 @@ export class VideoProcessorService implements OnApplicationBootstrap {
     video: Video,
     storageKey: string,
   ): Promise<void> {
+    // ffmpeg reads from inside the Compose network — never the browser host.
     const sourceUrl = await this.objectStorage.presignGetObject(
       this.objectStorage.rawBucket,
       storageKey,
-      { expiresIn: SOURCE_URL_TTL_SECONDS },
+      { audience: 'server', expiresIn: SOURCE_URL_TTL_SECONDS },
     );
 
     const metadata = await probeVideo(sourceUrl);

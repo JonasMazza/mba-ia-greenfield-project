@@ -149,6 +149,17 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 - Each domain feature gets its own module (e.g., `UsersModule`, `VideosModule`) registered in `AppModule`
 - Controllers handle HTTP routing; Services hold business logic; both are scoped to their module
 
+## Videos (Fase 03)
+
+Upload, processing and playback of videos. Bytes never traverse Node: the API only issues presigned URLs, and the browser talks to object storage directly.
+
+- **`src/videos/`** — `VideosController` (`POST /videos`, `POST|GET /videos/:publicId/upload/parts`, `POST /videos/:publicId/upload/complete`, `DELETE /videos/:publicId/upload`, `GET /videos/:publicId/status`, `GET /videos/:publicId`, `GET /videos/:publicId/stream`, `GET /videos/:publicId/download`), `VideosService`, the `Video` entity (`video_status` enum: `draft → processing → ready | failed`), `storage/ObjectStorageService` (S3 client for MinIO) and `queue/QueueService` (pg-boss). Ownership is decided by the channel; a non-owner gets `404`, never `403`.
+- **Upload protocol** — `POST /videos` creates the `draft` row and opens an S3 multipart upload (≤ 10 GiB, part size from the request or 64 MiB by default); the client asks for presigned part URLs on demand, `PUT`s each part to storage, and completes with the `{ part_number, etag }` list, which enqueues `video.process`. `GET …/upload/parts` lists the parts already stored so a client can resume after a reload.
+- **Presign audiences** — every presign names who will use the URL: `'browser'` URLs are signed for `STORAGE_PUBLIC_ENDPOINT` (a host the browser resolves, e.g. `http://localhost:9000`), `'server'` URLs for `STORAGE_ENDPOINT` (the Compose service name, `http://minio:9000`). SigV4 signs the host, so a URL cannot be rewritten afterwards. In tests `src/test/jest-env.ts` pins the public endpoint to the internal one, because the published host is unreachable from inside Docker.
+- **Worker** — the `video-worker` service runs `src/worker/main.ts` (`ts-node`, its own image with FFmpeg). `VideoProcessorService` consumes `video.process`, probes the source with `ffprobe` over a server-audience presigned URL, writes a thumbnail to the processed bucket and moves the video to `ready` or `failed` (`failure_reason`). It reads the code only at startup: **`docker compose restart video-worker` after changing backend code.**
+- **Storage** — MinIO (`minio` service, ports 9000/9001) with the private buckets `streamtube-raw` and `streamtube-processed`, created by the one-shot `minio-bootstrap` service. CORS is server-wide (`MINIO_API_CORS_ALLOW_ORIGIN`) and must let the browser read the `ETag` of a part `PUT`.
+- **Config** — `src/config/storage.config.ts` (`STORAGE_*`, including the upload and playback URL TTLs) and `src/config/queue.config.ts` (`QUEUE_*`); both validated in `src/config/env.validation.ts`.
+
 ## Code Conventions
 
 - **TypeScript:** `nodenext` module resolution, `ES2023` target, `strictNullChecks` on, `noImplicitAny` off

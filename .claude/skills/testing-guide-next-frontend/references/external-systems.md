@@ -2,12 +2,12 @@
 
 # External Systems — Real vs Fake
 
-`next-frontend` has exactly one live external dependency it owns the contract with: the **NestJS upstream API**. Object Storage is deferred. The browser never talks to either directly (strict BFF model).
+`next-frontend` owns the contract with two external systems: the **NestJS upstream API**, which the browser never reaches (strict BFF model), and **object storage**, which the browser reaches directly for video bytes only, on presigned URLs the BFF hands out.
 
 | External system | Strategy | Mechanism | Why |
 |---|---|---|---|
 | **NestJS upstream API** (reached via `lib/api/upstream.ts`) | **Fake** | Vitest: `msw/node` (`mocks/server.ts` + `mocks/setup.ts`). E2E: server-side MSW booted by `instrumentation.ts` when `MSW_ENABLED=true`. | The upstream has its own test suite; hitting it from `next-frontend` tests would be slow, flaky, cross-project-coupled, and non-deterministic. |
-| **Object Storage (S3/MinIO)** | **Fake (deferred)** | Not wired (no media features yet). When added: in-memory/local emulator, never a real bucket. | Network + cost + flakiness; nothing to test until a media feature exists. |
+| **Object Storage (S3/MinIO)** | **Fake** | Every presigned fixture points at `STORAGE_ORIGIN` (`mocks/storage-origin.ts`, resolves nowhere). Vitest: `mocks/handlers/storage.ts` answers part `PUT`s with an `ETag` and the CORS headers that expose it. E2E: `tests/storage-stub.ts` stubs that origin — and only it — in the browser. Real MinIO: manual smoke (`docs/phases/phase-03-videos-frontend/smoke-checklist.md`). | Network + cost + flakiness; and a byte-plane request that escapes the fake must fail loudly instead of reaching a real bucket. |
 | **Same-origin `/api/**` Route Handlers** | **Real** in E2E; **as functions** in Vitest integration | E2E: real handlers run server-side in the containerized app. Vitest: imported and called directly. | The BFF logic IS the unit under test — never fake it; only fake what it calls (upstream). |
 
 ## The MSW boundary — non-negotiable

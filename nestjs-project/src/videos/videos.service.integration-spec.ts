@@ -253,6 +253,48 @@ describe('VideosService (integration)', () => {
     ).rejects.toBeInstanceOf(VideoNotFoundException);
   }, 30000);
 
+  it('should list the parts the storage already holds, with their ETags, for the owner', async () => {
+    const { userId } = await createUserWithChannel();
+    const initiated = await service.initiateUpload(userId, validDto);
+    await trackUpload(initiated.public_id);
+
+    await expect(
+      service.listUploadedParts(userId, initiated.public_id),
+    ).resolves.toEqual({ parts: [] });
+
+    const part = await uploadOnePart(userId, initiated.public_id);
+
+    await expect(
+      service.listUploadedParts(userId, initiated.public_id),
+    ).resolves.toEqual({
+      parts: [{ part_number: 1, etag: part.etag, size: FIVE_MIB }],
+    });
+  }, 60000);
+
+  it('should hide the uploaded parts of a video owned by someone else', async () => {
+    const owner = await createUserWithChannel();
+    const stranger = await createUserWithChannel();
+    const initiated = await service.initiateUpload(owner.userId, validDto);
+    await trackUpload(initiated.public_id);
+
+    await expect(
+      service.listUploadedParts(stranger.userId, initiated.public_id),
+    ).rejects.toBeInstanceOf(VideoNotFoundException);
+  }, 30000);
+
+  it('should reject listing parts once the upload is no longer a draft', async () => {
+    const { userId } = await createUserWithChannel();
+    const initiated = await service.initiateUpload(userId, validDto);
+    const part = await uploadOnePart(userId, initiated.public_id);
+    await service.completeUpload(userId, initiated.public_id, {
+      parts: [part],
+    });
+
+    await expect(
+      service.listUploadedParts(userId, initiated.public_id),
+    ).rejects.toBeInstanceOf(InvalidUploadStateException);
+  }, 60000);
+
   it('should move the draft to processing and enqueue the job atomically', async () => {
     const { userId } = await createUserWithChannel();
     const initiated = await service.initiateUpload(userId, validDto);

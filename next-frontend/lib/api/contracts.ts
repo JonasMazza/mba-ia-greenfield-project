@@ -55,3 +55,43 @@ export type RefreshTokenPair =
 // Shared error envelope (all auth 4xx responses)
 export type ApiErrorEnvelope =
   paths["/auth/register"]["post"]["responses"][400]["content"]["application/json"];
+
+// ─── Videos ───────────────────────────────────────────────────────────────────
+// Phase 03 (frontend slice). Every alias below is a pass-through of the upstream
+// shape; the BFF under `app/api/videos/**` proxies them without reshaping.
+// Response fields are optional in `openapi.json` (inline schemas carry no
+// `required`), so consumers narrow at the boundary instead of trusting presence.
+
+// Request bodies
+export type InitiateUploadDto =
+  paths["/videos"]["post"]["requestBody"]["content"]["application/json"];
+
+export type PresignPartsDto =
+  paths["/videos/{publicId}/upload/parts"]["post"]["requestBody"]["content"]["application/json"];
+
+export type CompleteUploadDto =
+  paths["/videos/{publicId}/upload/complete"]["post"]["requestBody"]["content"]["application/json"];
+
+// Upload control plane — success response bodies
+export type InitiateUploadResponse =
+  paths["/videos"]["post"]["responses"][201]["content"]["application/json"];
+
+export type PresignPartsResponse =
+  paths["/videos/{publicId}/upload/parts"]["post"]["responses"][200]["content"]["application/json"];
+
+export type UploadedPartsResponse =
+  paths["/videos/{publicId}/upload/parts"]["get"]["responses"][200]["content"]["application/json"];
+
+export type CompleteUploadResponse =
+  paths["/videos/{publicId}/upload/complete"]["post"]["responses"][200]["content"]["application/json"];
+
+// Processing status (owner polling)
+export type VideoStatusResponse =
+  paths["/videos/{publicId}/status"]["get"]["responses"][200]["content"]["application/json"];
+
+// Playback surface
+export type PublicVideo =
+  paths["/videos/{publicId}"]["get"]["responses"][200]["content"]["application/json"];
+
+export type PresignedUrlResponse =
+  paths["/videos/{publicId}/stream"]["get"]["responses"][200]["content"]["application/json"];

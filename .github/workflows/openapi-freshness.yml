@@ -1,0 +1,39 @@
+# Guards the OpenAPI contract chain (next-frontend-openapi-typing/TD-02, TD-03):
+# nestjs-project/openapi.json → next-frontend/openapi.json → lib/api/types.gen.ts.
+# A pull request that changes the backend contract without re-syncing the
+# frontend copy and regenerating the types fails here, so a stale pair can
+# never be merged.
+name: openapi-freshness
+
+on:
+  pull_request:
+
+jobs:
+  freshness:
+    name: Spec and generated types are in sync
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: next-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: next-frontend/package-lock.json
+
+      - name: Sync the upstream spec into next-frontend
+        working-directory: .
+        run: bash scripts/sync-openapi.sh
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Regenerate the typed contract
+        run: npm run openapi:types
+
+      - name: Fail on drift between the committed pair and the regenerated one
+        working-directory: .
+        run: git diff --exit-code -- next-frontend/openapi.json next-frontend/lib/api/types.gen.ts
