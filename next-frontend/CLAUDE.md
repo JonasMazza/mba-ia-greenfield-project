@@ -136,7 +136,7 @@ Source of decisions: `docs/decisions/technical-decisions-next-frontend-openapi-t
 
 The concrete value of `API_URL` depends on Docker Compose topology (e.g., `http://nestjs-api:3000` on a shared Compose network vs `http://host.docker.internal:3000` from a separate stack). The stacks are currently separate — networking integration is deferred to its own infra task; in the meantime, `.env.local` carries whichever value the local environment can reach.
 
-Media streaming will eventually come from Object Storage (S3/MinIO) — TBD.
+**Video bytes are the one exception to "the browser only talks to `/api/**`" — a partition, not a breach of the BFF.** The control plane (create the draft, sign parts, list/complete/abort the upload, status, playback URLs) goes through `app/api/videos/**`; the bytes go browser ⇄ object storage directly on presigned URLs: part `PUT`s from `lib/videos/uploader.ts` (Uppy headless), and playback/download through `/api/videos/:publicId/stream|download`, which answer `307` to a freshly signed storage URL. The browser never learns `API_URL` nor a storage credential.
 
 Refer to the C4 container diagram at `docs/diagrams/software-arch.mermaid` for the full system view.
 
@@ -202,6 +202,7 @@ npx playwright test tests/xxxx.e2e-spec.ts
 - Step 2 must use `MSW_ENABLED=true` — without it `instrumentation.ts` skips MSW and upstream calls will fail or hit the real NestJS API.
 - Never add `webServer` to `playwright.config.ts` — Playwright must not manage the dev server process (it runs inside Docker, not on the host).
 - If the dev server is already running from a previous session, skip steps 2–3 and go straight to step 4.
+- **Restart the dev server after editing server-side code and before running Playwright.** Next 16's Turbopack hot reloader calls `resetFetch()` whenever server files change, restoring the `fetch` captured before `instrumentation.ts` installed MSW — from then on every upstream call goes to the real network (even `/api/auth/login`). `docker compose restart next-frontend`, then step 2 again.
 
 ### MSW + Vitest — wired
 
@@ -224,6 +225,7 @@ Real browser → real Next.js (RSC, layouts, real `/api/**` Route Handlers serve
 - E2E specs **MUST NOT** reach a real NestJS API — upstream is always the server-side `mocks/` MSW.
 - Upstream handlers are **shared** with Vitest — no E2E-only fork; per-scenario deviation is a reserved trigger fixture branch, not a runtime override. Trigger values must not collide with Vitest fixture values.
 - `onUnhandledRequest`: `"error"` in Vitest, **`"bypass"`** in instrumentation — never copy `"error"` into `instrumentation.ts`.
+- The object-storage origin (`STORAGE_ORIGIN`, `mocks/storage-origin.ts`) is the only browser request outside `/api/**`. Vitest fakes it with `mocks/handlers/storage.ts`; Playwright stubs **that origin only** with `tests/storage-stub.ts`. The real MinIO path is covered by the manual smoke (`docs/phases/phase-03-videos-frontend/smoke-checklist.md`).
 
 ## Stack Summary
 
