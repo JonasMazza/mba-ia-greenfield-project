@@ -1,7 +1,22 @@
 # phase-03-videos-frontend — Progress
 
-**Status:** in_progress
+**Status:** completed
 **SIs:** 17/17 completed
+
+## Final verification
+
+| Deliverable | Comando | Resultado |
+|---|---|---|
+| Backend tests | `cd nestjs-project && docker compose exec nestjs-api npm test -- --runInBand` | **206/206** ✅ (30 suítes) |
+| Backend E2E | `cd nestjs-project && docker compose exec nestjs-api npm run test:e2e` | **90/90** ✅ (8 suítes) |
+| Backend type-check | `docker compose exec nestjs-api npx tsc --noEmit` | exit 0 ✅ |
+| Frontend tests | `cd next-frontend && docker compose exec next-frontend npm test` | **123/123** ✅ (30 arquivos) |
+| Frontend E2E | dev server com `MSW_ENABLED=true` + `npx playwright test` no host | **14/14** ✅ (auth + `videos-upload` + `videos-preview`) |
+| Frontend type-check | `docker compose exec next-frontend npx tsc --noEmit` | exit 0 ✅ |
+| Lint frontend | `docker compose exec next-frontend npm run lint` | exit 0 ✅ — 1 warning pré-existente (`react-hooks/incompatible-library` em `components/auth/signup-form.tsx`), nenhum nos arquivos da fatia |
+| Lint backend (arquivos alterados na fatia) | `npx eslint` nos 12 arquivos `.ts` tocados | exit 1 — só os **2 erros do baseline herdado** em `env.validation.integration-spec.ts` (linhas do teste de `SWAGGER_ENABLED`, de outro autor, anteriores à fase); nenhum problema novo |
+| Frontend build | `docker compose exec next-frontend npm run build` | exit 0 ✅ — inclui `/videos/upload`, `/videos/[publicId]/preview` e as 8 rotas `/api/videos/**` |
+| Smoke manual (`TD-08`) | `smoke-checklist.md` contra a stack real | 10/10 ✅ — ver SI-03.17 |
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
