@@ -1,9 +1,12 @@
 FROM node:25.6.0-slim
 
-RUN apt update && apt install -y procps curl
+# ffmpeg is here for the worker's integration tests: the whole suite runs in this
+# container (`docker compose exec nestjs-api npm test`). The API itself never
+# shells out to it — media processing runs in the worker service.
+RUN apt update && apt install -y procps curl ffmpeg && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /home/node/app
 
 USER node
 
-CMD [ "tail", "-f", "/dev/null" ] 
+CMD [ "tail", "-f", "/dev/null" ]
