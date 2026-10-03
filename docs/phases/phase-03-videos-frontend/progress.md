@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 4/17 completed
+**SIs:** 6/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -32,14 +32,17 @@
 - **Observations:** none
 
 ### SI-03.5 — Handlers MSW do domínio videos (plano upstream)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** no tests (test-infra; suíte existente segue 67/67 com o barrel ampliado)
+- **Observations:**
+  - As rotas públicas do fixture (`GET /videos/:id`, `/stream`, `/download`) decidem "dono vs. anônimo" pela presença do bearer — é o que permite testar a injeção condicional do token no BFF.
+  - Trigger extra além dos planejados: `resumable000` devolve a parte 1 em `GET …/upload/parts`, para o cenário de retomada do uploader.
 
 ### SI-03.6 — Harness do plano de bytes: handlers MSW do storage e stub Playwright (Setup)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** no tests (Setup; verificado por SI-03.12 e pelo E2E de SI-03.15)
+- **Observations:**
+  - O fake do storage responde também ao `OPTIONS` e envia `Access-Control-Expose-Headers: ETag` — sem isso um `PUT` cross-origin feito pelo browser (ou pelo XHR do jsdom) não consegue ler o ETag, que é exatamente o requisito que o MinIO real atende via `MINIO_API_CORS_ALLOW_ORIGIN`.
 
 ### SI-03.7 — BFF: início do upload e assinatura/listagem de partes
 - **Status:** pending
