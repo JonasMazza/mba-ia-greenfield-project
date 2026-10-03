@@ -3,10 +3,27 @@ import { env } from "@/lib/env";
 
 import { destroySession, getSession, setSession } from "./session";
 
-let refreshPromise: Promise<boolean> | null = null;
+interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+}
 
-async function tryRefresh(): Promise<boolean> {
-  const session = await getSession();
+/**
+ * How long a rotation is handed out to requests that still present the token
+ * it replaced. Matches the API's reuse grace (`TOKEN_REUSE_GRACE_PERIOD_MS`):
+ * inside it the API would answer with the *revoked* refresh token, and saving
+ * that one gets the whole session revoked on the next refresh.
+ */
+const ROTATION_REUSE_MS = 10_000;
+
+/**
+ * Refreshes keyed by the refresh token they present. Concurrent requests of one
+ * session share a single call and its result — a second call would present an
+ * already-rotated token — while other sessions never wait on it.
+ */
+const rotations = new Map<string, Promise<TokenPair | null>>();
+
+async function requestRefresh(refreshToken: string): Promise<TokenPair | null> {
   const clientIp = await forwardedFor();
 
   const res = await fetch(`${env.API_URL}/auth/refresh`, {
@@ -15,12 +32,11 @@ async function tryRefresh(): Promise<boolean> {
       "Content-Type": "application/json",
       ...(clientIp && { "X-Forwarded-For": clientIp }),
     },
-    body: JSON.stringify({ refresh_token: session.refreshToken }),
+    body: JSON.stringify({ refresh_token: refreshToken }),
   });
 
   if (!res.ok) {
-    await destroySession();
-    return false;
+    return null;
   }
 
   const data = (await res.json()) as {
@@ -29,28 +45,53 @@ async function tryRefresh(): Promise<boolean> {
   };
 
   if (!data.access_token || !data.refresh_token) {
+    return null;
+  }
+
+  return { accessToken: data.access_token, refreshToken: data.refresh_token };
+}
+
+function rotate(refreshToken: string): Promise<TokenPair | null> {
+  let rotation = rotations.get(refreshToken);
+  if (!rotation) {
+    rotation = requestRefresh(refreshToken).then(
+      (tokens) => {
+        if (tokens) {
+          setTimeout(() => rotations.delete(refreshToken), ROTATION_REUSE_MS).unref();
+        } else {
+          rotations.delete(refreshToken);
+        }
+        return tokens;
+      },
+      (error: unknown) => {
+        rotations.delete(refreshToken);
+        throw error;
+      }
+    );
+    rotations.set(refreshToken, rotation);
+  }
+  return rotation;
+}
+
+async function tryRefresh(): Promise<boolean> {
+  const session = await getSession();
+  const tokens = await rotate(session.refreshToken);
+
+  if (!tokens) {
     await destroySession();
     return false;
   }
 
+  // Every request that shared the rotation saves it in its own cookie: its
+  // retry re-reads the session, and its jar still holds the expired pair.
   await setSession({
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
+    ...tokens,
     userId: session.userId,
     email: session.email,
     channelSlug: session.channelSlug,
   });
 
   return true;
-}
-
-function refreshOnce(): Promise<boolean> {
-  if (!refreshPromise) {
-    refreshPromise = tryRefresh().finally(() => {
-      refreshPromise = null;
-    });
-  }
-  return refreshPromise;
 }
 
 export async function withRefresh(
@@ -62,7 +103,7 @@ export async function withRefresh(
     return response;
   }
 
-  const refreshed = await refreshOnce();
+  const refreshed = await tryRefresh();
 
   if (!refreshed) {
     return new Response(
