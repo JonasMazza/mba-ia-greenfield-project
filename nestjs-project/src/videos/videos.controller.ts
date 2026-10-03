@@ -227,7 +227,8 @@ export class VideosController {
   })
   @ApiResponse({
     status: 409,
-    description: 'The video has no active multipart upload',
+    description:
+      'The video has no active multipart upload (`INVALID_UPLOAD_STATE`), or the stored parts do not add up to the declared `size_bytes` (`UPLOAD_SIZE_MISMATCH`)',
     schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
   })
   async completeUpload(

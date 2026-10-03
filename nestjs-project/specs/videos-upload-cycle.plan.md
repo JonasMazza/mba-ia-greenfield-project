@@ -117,6 +117,19 @@ Duas invariantes de segurança governam os testes: operar o ciclo fora do estado
     - expect: status 400
     - expect: o vídeo continua em `status = 'draft'`
 
+#### 2.4. rejects-complete-when-parts-differ-from-declared-size
+
+**Covers AC:** #1
+**Source:** manual (revisão final da fase 03: o teto de 10 GiB só olhava o `size_bytes` declarado)
+**Last sync:** 2026-10-03T00:00:00Z
+
+**Steps:**
+  1. A inicia um upload declarando `size_bytes = 1 MiB`, envia uma parte de 5 MiB direto ao storage e faz POST /videos/:publicId/upload/complete
+    - expect: status 409
+    - expect: corpo carrega `errorCode: "UPLOAD_SIZE_MISMATCH"`
+    - expect: o vídeo continua em `status = 'draft'` com o mesmo `upload_id` (o multipart não foi concluído)
+    - expect: nenhum job `video.process` foi criado
+
 ### 3. Abort do upload
 
 **Setup:** mesmo bootstrap da seção 1.

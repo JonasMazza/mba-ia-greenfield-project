@@ -22,6 +22,7 @@ import {
   FileTooLargeException,
   InvalidUploadStateException,
   UnsupportedMediaTypeException,
+  UploadSizeMismatchException,
   VideoNotFoundException,
   VideoNotReadyException,
 } from './videos.exceptions';
@@ -138,6 +139,32 @@ function requireActiveUpload(video: Video): {
     throw new InvalidUploadStateException();
   }
   return { storageKey: video.storage_key, uploadId: video.upload_id };
+}
+
+/**
+ * The ceiling is checked on the size the client declared at initiate; the
+ * storage is the only witness of what was actually sent. The parts about to be
+ * stitched must add up to the declaration, or a small declaration could carry
+ * an object of any size into processing.
+ */
+function requireDeclaredSize(
+  video: Video,
+  requested: CompleteUploadDto['parts'],
+  stored: UploadedPart[],
+): void {
+  const sizeByPart = new Map(
+    stored.map((part) => [part.part_number, part.size]),
+  );
+  const requestedNumbers = new Set(requested.map((part) => part.part_number));
+  let uploadedBytes = 0;
+  for (const partNumber of requestedNumbers) {
+    uploadedBytes += sizeByPart.get(partNumber) ?? 0;
+  }
+
+  const declaredBytes = video.size_bytes ?? 0;
+  if (uploadedBytes !== declaredBytes) {
+    throw new UploadSizeMismatchException(declaredBytes, uploadedBytes);
+  }
 }
 
 @Injectable()
@@ -258,6 +285,12 @@ export class VideosService {
   ): Promise<CompleteUploadResult> {
     const video = await this.getOwnedVideo(userId, publicId);
     const { storageKey, uploadId } = requireActiveUpload(video);
+
+    requireDeclaredSize(
+      video,
+      dto.parts,
+      await this.objectStorage.listUploadedParts(storageKey, uploadId),
+    );
 
     await this.objectStorage.completeMultipartUpload(
       storageKey,

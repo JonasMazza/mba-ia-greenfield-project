@@ -46,3 +46,17 @@ export class UnsupportedMediaTypeException extends DomainException {
     );
   }
 }
+
+/**
+ * The size declared at initiate is only the client's word; completing is refused
+ * unless the stored parts add up to it, which keeps the upload ceiling real.
+ */
+export class UploadSizeMismatchException extends DomainException {
+  constructor(declaredBytes: number, uploadedBytes: number) {
+    super(
+      'UPLOAD_SIZE_MISMATCH',
+      409,
+      `Uploaded parts total ${uploadedBytes} bytes but the upload declared ${declaredBytes} bytes`,
+    );
+  }
+}

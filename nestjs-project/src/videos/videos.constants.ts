@@ -6,6 +6,9 @@ export const VIDEO_QUEUES = {
 /** S3/MinIO multipart floor: every part but the last must be at least 5 MiB. */
 export const MIN_PART_SIZE_BYTES = 5 * 1024 * 1024;
 
+/** S3 caps a ListParts page at 1000 parts (MinIO allows more); always page at the S3 size. */
+export const LIST_PARTS_PAGE_SIZE = 1000;
+
 /** Default part size handed to the client when it does not ask for one. */
 export const DEFAULT_PART_SIZE_BYTES = 64 * 1024 * 1024;
 

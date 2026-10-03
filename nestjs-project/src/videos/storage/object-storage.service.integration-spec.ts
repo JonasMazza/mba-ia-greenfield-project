@@ -123,6 +123,31 @@ describe('ObjectStorageService (integration)', () => {
     await service.abortMultipartUpload(key, uploadId);
   }, 60000);
 
+  it('should list every uploaded part even past the 1000-part page of ListParts', async () => {
+    const key = newKey();
+    const uploadId = await service.createMultipartUpload(key, 'video/mp4');
+    // A 10 GiB upload at the 5 MiB floor has 2048 parts; ListParts pages at
+    // 1000. Parts below 5 MiB are accepted until complete, so 1 byte is enough.
+    const partCount = 1001;
+    const partNumbers = Array.from({ length: partCount }, (_, i) => i + 1);
+    const batchSize = 50;
+    for (let start = 0; start < partCount; start += batchSize) {
+      await Promise.all(
+        partNumbers
+          .slice(start, start + batchSize)
+          .map((partNumber) =>
+            uploadPart(key, uploadId, partNumber, new Uint8Array(1).fill(1)),
+          ),
+      );
+    }
+
+    const parts = await service.listUploadedParts(key, uploadId);
+
+    expect(parts).toHaveLength(partCount);
+    expect(parts.map((part) => part.part_number)).toEqual(partNumbers);
+    await service.abortMultipartUpload(key, uploadId);
+  }, 120000);
+
   it('should presign a GET URL that MinIO serves with Range (partial read)', async () => {
     const key = newKey();
     const payload = new Uint8Array(FIVE_MIB).fill(3);

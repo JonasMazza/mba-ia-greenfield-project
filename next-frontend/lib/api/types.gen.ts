@@ -1050,7 +1050,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorEnvelope"];
                 };
             };
-            /** @description The video has no active multipart upload */
+            /** @description The video has no active multipart upload (`INVALID_UPLOAD_STATE`), or the stored parts do not add up to the declared `size_bytes` (`UPLOAD_SIZE_MISMATCH`) */
             409: {
                 headers: {
                     [name: string]: unknown;
