@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 12/17 completed
+**SIs:** 13/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -89,9 +89,11 @@
   - O interceptor de XHR do MSW entrega uma resposta tardia até a um XHR já abortado (um browser real não faz isso) e isso disparava o handler de progresso do Uppy sobre um arquivo já removido; o cenário de cancelamento deixa o `PUT` sem resposta em vez de liberá-lo depois do abort.
 
 ### SI-03.13 — Hook de polling do status de processamento (Setup)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** no tests (Setup; `npx tsc --noEmit` exit 0, eslint limpo; comportamento verificado em SI-03.14)
+- **Observations:**
+  - `publicId` aceita `null` (estado `idle`) e o estado inicial `polling` é derivado no render, não gravado com `setState` dentro do efeito — a regra `react-hooks/set-state-in-effect` do `eslint-plugin-react-hooks` 7 proíbe isso.
+  - Qualquer requisição que falhe (resposta não-2xx ou erro de rede) encerra o loop em `error`; o snippet não definia política de erro e uma tela descartável não justifica retry com backoff próprio.
 
 ### SI-03.14 — Hook de polling do status de processamento (Verification)
 - **Status:** pending
