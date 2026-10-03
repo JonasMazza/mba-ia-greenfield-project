@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 16/17 completed
+**SIs:** 17/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -121,6 +121,9 @@
   - Para o dono, um vídeo ainda não `ready` mostra os metadados com uma mensagem de status em vez do `<video>` (o stream daria `409 VIDEO_NOT_READY`); para qualquer outro a página é o 404.
 
 ### SI-03.17 — Smoke manual contra a stack real (Verification)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** checklist `smoke-checklist.md` executado em 2026-10-03 contra a stack real (commit `51dbb64`): 10/10 ✓, 0 erros de console
+- **Observations:**
+  - **Como foi executado:** Google Chrome real (perfil temporário, dirigido por um script Playwright descartável, para ter codecs H.264 e registrar rede/console item a item) → `next dev` **sem** MSW → NestJS (`start:dev`) + MinIO + `video-worker` reiniciado com o código atual. Conta de teste criada pelo `POST /auth/register` e confirmada pelo link do Mailpit. Arquivos: MP4 H.264/AAC de 10 s (1 MB) e MP4 de 30 s a 40 Mbps (142 MiB → 3 partes de 64 MiB), gerados com o `ffmpeg` do worker.
+  - ✓ 1 login · ✓ 2 anônimo → `/login` · ✓ 3 upload curto: `?resume=<id>&size=1046084` gravado, 1 `PUT` em `localhost:9000` → 200, `complete` com o ETag lido pelo JS (CORS do MinIO expõe o `ETag`) · ✓ 4 `processing → ready`, thumbnail de `localhost:9000` carregada, `0:10` e `640 × 360`, `?resume` removido · ✓ 5 preview com `<video src="/api/videos/<id>/stream">` · ✓ 6 play + seek: `/stream` → 307 `no-store` para `localhost:9000`, `Range: bytes=0-` → 206; no vídeo de 142 MiB o seek gerou `bytes=123994112-` → 206 · ✓ 7 download: 307 com `response-content-disposition=attachment`, arquivo salvo com o tamanho do original · ✓ 8 reload no meio do upload (throttling de 6 MB/s; a parte 3 já tinha terminado) volta com o aviso e **Resume upload** · ✓ 9 arquivo de outro tamanho: erro inline, 0 requisições · ✓ 10 mesmo arquivo: 1 `listParts`, 0 rascunhos novos, só as partes 1 e 2 assinadas e enviadas, `complete` com 1, 2, 3, termina em `ready`.
+  - **Achado fora do checklist — a premissa central da TD-06 não vale no Chrome.** O Chrome segue o 307 uma vez e reusa a URL **redirecionada** em todas as requisições de `Range` seguintes do mesmo `<video>` (mesma `X-Amz-Date`); ele não volta à URL same-origin. Medido: play, pausa, espera de 330 s (TTL de playback = 300 s), seek para fora do buffer → dezenas de tentativas na URL expirada e `MEDIA_ERR_NETWORK` ("FFmpegDemuxer: data source error"); nenhuma requisição nova a `/api/videos/<id>/stream`. Ou seja, a expiração **é** observável pelo player depois de 5 min, ao contrário do que a TD-06 assume ("every subsequent range request repeats the handshake"). Os ACs desta fatia (reprodução com seek e `206`) passam, e a superfície é descartável; mas a decisão precisa ser revisitada antes do player da Fase 05 (opções do próprio doc: recuperar no `error` do player recarregando o `src` same-origin e restaurando o `currentTime`, ou TTL de playback maior). Registrado como follow-up, sem correção nesta fatia.
