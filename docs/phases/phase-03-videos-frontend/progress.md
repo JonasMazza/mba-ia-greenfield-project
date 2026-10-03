@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 2/17 completed
+**SIs:** 4/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -20,13 +20,15 @@
   - O cenário 4.1 do spec lê `openapi.json` do disco e confere `security`, respostas e o schema de `parts` — é o teste que garante que o contrato commitado acompanha a rota (o frontend gera os tipos a partir dele).
 
 ### SI-03.3 — Sincronizar o contrato OpenAPI no frontend e expor os aliases de vídeos
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** no tests (type-only; `npx tsc --noEmit` exit 0)
+- **Observations:**
+  - O contrato tem **8 paths** `/videos*` com 9 operações (`/upload/parts` carrega `get` e `post`) — o plano falava em "nove paths"; a contagem correta é essa.
+  - Os schemas de resposta dos endpoints de vídeos são inline no `openapi.json` sem `required`, então todo campo sai opcional em `types.gen.ts`; os aliases ficaram pass-through (TD-04) e a estreiteza é feita no consumidor (BFF/hook).
 
 ### SI-03.4 — Guarda de CI de frescor do contrato OpenAPI
-- **Status:** pending
-- **Tests:** —
+- **Status:** completed
+- **Tests:** no tests (Infra) — sequência sync → `openapi:types` → `git diff --exit-code` reproduzida localmente com diff vazio
 - **Observations:** none
 
 ### SI-03.5 — Handlers MSW do domínio videos (plano upstream)
