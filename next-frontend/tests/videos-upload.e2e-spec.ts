@@ -52,4 +52,18 @@ test.describe("videos-upload", () => {
     )
     expect(storage.puts).toBe(1)
   })
+
+  test("a draft that cannot be resumed can be discarded", async ({ page }) => {
+    // `resumable000` is RESUMABLE_PUBLIC_ID in mocks/handlers/videos.ts — the
+    // handlers module cannot be imported here (it pulls the server env).
+    await signIn(page)
+
+    await page.goto("/videos/upload?resume=resumable000&size=1024")
+    await expect(page.getByText(/An upload is waiting to be finished/)).toBeVisible()
+    await page.getByRole("button", { name: "Discard upload" }).click()
+
+    await expect(page.getByRole("button", { name: "Start upload" })).toBeVisible()
+    await expect(page.getByText(/An upload is waiting to be finished/)).toBeHidden()
+    expect(new URL(page.url()).searchParams.has("resume")).toBe(false)
+  })
 })

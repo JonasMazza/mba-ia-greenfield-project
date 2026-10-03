@@ -230,4 +230,92 @@ describe("<UploadPanel />", () => {
     expect(bffCalls).toEqual([])
     expect(storagePuts).toBe(0)
   })
+
+  describe("discarding a draft", () => {
+    const discardCalls = () => callsTo("DELETE", `/api/videos/${RESUMABLE_PUBLIC_ID}/upload`)
+
+    it("aborts the draft and goes back to a fresh upload", async () => {
+      const user = userEvent.setup()
+      const replaceState = vi.spyOn(window.history, "replaceState")
+      render(<UploadPanel resume={{ publicId: RESUMABLE_PUBLIC_ID, sizeBytes: 1024 }} />)
+
+      await user.click(screen.getByRole("button", { name: "Discard upload" }))
+
+      expect(await screen.findByRole("button", { name: "Start upload" })).toBeDisabled()
+      expect(discardCalls()).toHaveLength(1)
+      expect(screen.queryByText(/Select the same file/)).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Discard upload" })).not.toBeInTheDocument()
+      const url = new URL(String(replaceState.mock.calls.at(-1)?.[2]))
+      expect(url.searchParams.has("resume")).toBe(false)
+      expect(url.searchParams.has("size")).toBe(false)
+    })
+
+    it("offers the discard when the storage no longer holds the upload", async () => {
+      server.use(
+        http.get("/api/videos/:publicId/upload/parts", () =>
+          HttpResponse.json(envelope(409, "UPLOAD_EXPIRED", "The upload no longer exists in storage"), {
+            status: 409,
+          })
+        )
+      )
+      const user = userEvent.setup()
+      render(<UploadPanel resume={{ publicId: RESUMABLE_PUBLIC_ID, sizeBytes: 1024 }} />)
+
+      await user.upload(screen.getByLabelText("Video file"), videoFile(1024))
+      await user.click(screen.getByRole("button", { name: "Resume upload" }))
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("can no longer be resumed")
+      await user.click(screen.getByRole("button", { name: "Discard upload" }))
+      expect(await screen.findByRole("button", { name: "Start upload" })).toBeDisabled()
+      expect(discardCalls()).toHaveLength(1)
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    })
+
+    it("treats a draft that is already gone as discarded", async () => {
+      server.use(
+        http.delete("/api/videos/:publicId/upload", () =>
+          HttpResponse.json(envelope(404, "VIDEO_NOT_FOUND", "Video not found"), { status: 404 })
+        )
+      )
+      const user = userEvent.setup()
+      render(<UploadPanel resume={{ publicId: RESUMABLE_PUBLIC_ID, sizeBytes: 1024 }} />)
+
+      await user.click(screen.getByRole("button", { name: "Discard upload" }))
+
+      expect(await screen.findByRole("button", { name: "Start upload" })).toBeInTheDocument()
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    })
+
+    it("follows the video when the upload had already been completed", async () => {
+      server.use(
+        http.delete("/api/videos/:publicId/upload", () =>
+          HttpResponse.json(envelope(409, "INVALID_UPLOAD_STATE", "The video has no active multipart upload"), {
+            status: 409,
+          })
+        )
+      )
+      const user = userEvent.setup()
+      render(<UploadPanel resume={{ publicId: RESUMABLE_PUBLIC_ID, sizeBytes: 1024 }} />)
+
+      await user.click(screen.getByRole("button", { name: "Discard upload" }))
+
+      expect(await screen.findByText("Processing your video…")).toBeInTheDocument()
+    })
+
+    it("keeps the draft when the discard fails", async () => {
+      server.use(
+        http.delete("/api/videos/:publicId/upload", () =>
+          HttpResponse.json(envelope(500, "INTERNAL_SERVER_ERROR", "Storage unavailable"), { status: 500 })
+        )
+      )
+      const user = userEvent.setup()
+      render(<UploadPanel resume={{ publicId: RESUMABLE_PUBLIC_ID, sizeBytes: 1024 }} />)
+
+      await user.click(screen.getByRole("button", { name: "Discard upload" }))
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("could not be discarded")
+      expect(screen.getByText(/Select the same file/)).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Discard upload" })).toBeEnabled()
+    })
+  })
 })

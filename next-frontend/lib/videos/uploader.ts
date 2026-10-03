@@ -102,6 +102,26 @@ const contractError = (message: string) =>
 const uploadPath = (publicId: string) => `/api/videos/${encodeURIComponent(publicId)}/upload`;
 
 /**
+ * Aborts a draft's multipart upload and deletes the draft — the way out of a
+ * resume that cannot go on (the storage dropped the upload, the stored parts
+ * were sliced differently, the file is gone). A draft that no longer exists
+ * counts as discarded; `completed` means the upload had in fact been finished
+ * (the video left `draft`), so there is nothing to discard.
+ */
+export async function discardUpload(publicId: string): Promise<"discarded" | "completed"> {
+  try {
+    await bffRequest<null>(uploadPath(publicId), { method: "DELETE" });
+  } catch (error) {
+    if (error instanceof VideoUploadError) {
+      if (error.status === 404) return "discarded";
+      if (error.code === "INVALID_UPLOAD_STATE") return "completed";
+    }
+    throw error;
+  }
+  return "discarded";
+}
+
+/**
  * Headless multipart uploader (TD-02): Uppy core + `@uppy/aws-s3` drive the
  * mechanics — one part signed at a time (TD-03), per-part retry, ETag
  * accounting, cancellation — while every control-plane call goes to the

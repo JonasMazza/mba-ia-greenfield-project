@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { ProcessingStatus } from "@/components/videos/processing-status"
 import {
   createVideoUploader,
+  discardUpload,
   VideoUploadError,
   type ResumeTarget,
   type UploadProgress,
@@ -35,6 +36,9 @@ function describeFailure(error: VideoUploadError): UploadFailure {
       return { message: "Only video files can be uploaded." }
     case "RESUME_SIZE_MISMATCH":
       return { message: "This is not the file you started uploading. Select the same file to resume." }
+    case "UPLOAD_EXPIRED":
+    case "RESUME_PART_MISMATCH":
+      return { message: "This upload can no longer be resumed. Discard it to start over." }
     default:
       return { message: `The upload was interrupted: ${error.message}` }
   }
@@ -59,6 +63,7 @@ function UploadPanel({ resume = null }: { resume?: ResumeTarget | null }) {
   const [phase, setPhase] = React.useState<Phase>({ name: "select" })
   const [failure, setFailure] = React.useState<UploadFailure | null>(null)
   const [inputKey, setInputKey] = React.useState(0)
+  const [discarding, setDiscarding] = React.useState(false)
   const uploaderRef = React.useRef<VideoUploader | null>(null)
 
   React.useEffect(() => () => uploaderRef.current?.destroy(), [])
@@ -96,8 +101,8 @@ function UploadPanel({ resume = null }: { resume?: ResumeTarget | null }) {
     void uploader.upload()
   }
 
-  function cancel() {
-    uploaderRef.current?.cancel()
+  /** Back to an empty form with nothing left to resume. */
+  function reset() {
     uploaderRef.current?.destroy()
     uploaderRef.current = null
     writeResumeParams(null)
@@ -106,6 +111,32 @@ function UploadPanel({ resume = null }: { resume?: ResumeTarget | null }) {
     setFailure(null)
     setPhase({ name: "select" })
     setInputKey((key) => key + 1)
+  }
+
+  function cancel() {
+    uploaderRef.current?.cancel()
+    reset()
+  }
+
+  async function discard() {
+    if (!draft) return
+    setDiscarding(true)
+    try {
+      const outcome = await discardUpload(draft.publicId)
+      reset()
+      if (outcome === "completed") {
+        setPhase({ name: "processing", publicId: draft.publicId })
+      }
+    } catch (error) {
+      if (!(error instanceof VideoUploadError)) throw error
+      setFailure(
+        error.status === 401
+          ? describeFailure(error)
+          : { message: `The upload could not be discarded: ${error.message}` }
+      )
+    } finally {
+      setDiscarding(false)
+    }
   }
 
   if (phase.name === "processing") {
@@ -171,9 +202,23 @@ function UploadPanel({ resume = null }: { resume?: ResumeTarget | null }) {
           </Button>
         </div>
       ) : (
-        <Button type="button" size="md" disabled={!file} onClick={start} className="w-full">
-          {draft ? "Resume upload" : "Start upload"}
-        </Button>
+        <div className="flex flex-col gap-2">
+          <Button type="button" size="md" disabled={!file || discarding} onClick={start} className="w-full">
+            {draft ? "Resume upload" : "Start upload"}
+          </Button>
+          {draft && (
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              disabled={discarding}
+              onClick={() => void discard()}
+              className="w-full"
+            >
+              Discard upload
+            </Button>
+          )}
+        </div>
       )}
     </div>
   )
