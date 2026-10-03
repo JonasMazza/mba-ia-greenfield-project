@@ -1,13 +1,13 @@
 ---
 kind: phase
 name: phase-03-videos-frontend
-status: dirty
+status: clean
 issue_count: 0
 sources_mtime:
-  docs/phases/phase-03-videos-frontend/context.md: "2026-08-15T22:47:33-03:00"
-  docs/decisions/technical-decisions-phase-03-videos-frontend.md: "2026-08-15T16:25:06-03:00"
+  docs/phases/phase-03-videos-frontend/context.md: "2026-08-22T15:22:06-03:00"
+  docs/decisions/technical-decisions-phase-03-videos-frontend.md: "2026-08-22T15:16:51-03:00"
   docs/project-plan.md: "2026-07-20T13:23:34-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-07-24T14:25:37-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-08-22T15:17:07-03:00"
 issues:
   - id: IC-1
     status: resolved
@@ -90,45 +90,49 @@ advisories: []
 
 # phase-03-videos-frontend — Validation
 
+Second run (2026-10-02), after `/plan-resolve videos-frontend` closed every issue of the first run (2026-08-15). All 8 checks executed against the regenerated `context.md`; every category is empty, so the verdict is **`status: clean`**.
+
 ## Findings
 
 ### Inconsistencies
 
-_None open._ — IC-1..IC-8 resolved by `/plan-resolve` on 2026-08-22; see `## Resolved Issues`.
+_None._ — Check 1 compared the five `covers_capabilities` bullets against the 8 decided TDs: every TD's `Capability:` cites a bullet present in `## Scope`, and no two decisions imply mutually exclusive runtime behaviour (TD-06's same-origin redirect keeps the byte path browser ⇄ storage, consistent with TD-01 and TD-07). The Scope-Subsection orphan check does **not** fire: `## UI Inventory` carries the logic-only token-anchor (`_Frontend-runtime only —`) and the three `Scope: Frontend` TDs (TD-02, TD-05, TD-08) all carry `Renders in: frontend-runtime`, so they render in `### Frontend Runtime`. IC-1..IC-8 from the first run stay resolved (see `## Resolved Issues`).
 
 ### Ambiguities
 
-_None open._ — AMB-1 resolved by `/plan-resolve` on 2026-08-22.
+_None._ — the two routes this slice ships (`/videos/upload`, `/videos/:publicId/preview`) are pinned in the decisions doc, every capability bullet is phrased as a concrete flow, and the Fase 05 boundary (watch page, player controls, download button) is explicit in `## Scope`.
 
 ### Missing Decisions
 
-_None open._ — MD-1 resolved by `/plan-resolve` on 2026-08-22 without a new TD (folded into the widened `TD-07`).
+_None._ — every bullet in `## Capability Coverage` maps to ≥1 TD. The shared-types contract-sync check (Decisão #29) applies under `ui_in_scope: logic-only` but is **suppressed by inheritance**: `next-frontend-openapi-typing/TD-01` (`openapi-typescript` + `openapi-fetch`) and `TD-04` (`lib/api/contracts.ts` as the only `paths` importer) already decide the FE↔BE contract-sync strategy, and both are present in `## Inherited Decisions Detail`. The error-response format is inherited from `phase-02-auth/TD-07`.
 
 ### Dependency Gaps
 
-_None open._ — DG-1 resolved by `/plan-resolve` on 2026-08-22 as a blocking first SI for `/plan-build`.
+_None open._ — DG-1 (`types.gen.ts` carries no `/videos` paths) is still true on disk, but it was resolved on 2026-08-22 as a planned prerequisite — it becomes the first frontend SI in `/plan-build`, blocking every other frontend SI. Per the merge rule, a resolved issue is not re-emitted. Within-phase ordering is implied by the decisions themselves: TD-01 and TD-04 (backend) must land before the OpenAPI sync, which must land before any BFF Route Handler.
 
 ### Inherited Constraint Conflicts
 
-_None._ — Check 5 compares **decided** current-scope TDs against inherited conventions and TDs; at the time this file was written all 8 TDs were `pending`, so the check was vacuous. **All 8 are now decided** — re-run `/plan-validate videos-frontend` so Check 5 executes for real. TD-01 and TD-06 are the expected candidates to surface an ICC against `phase-03-videos/TD-03` and `TD-07`; both sibling TDs now carry a `**Revisions:**` block recording exactly that divergence (see IC-5), which is the intended landing place for it.
+_None._ — Check 5 now runs for real (all 8 TDs are decided). The two expected candidates do not conflict:
+
+- `phase-03-videos-frontend/TD-01` (dual signing endpoint) and `TD-04` (`GET /videos/:publicId/upload/parts`) revise the browser-facing half of `phase-03-videos/TD-03`; the sibling TD carries a dated `**Revisions:**` block naming both, so the documents agree.
+- `phase-03-videos-frontend/TD-06` (stable same-origin BFF URL, fresh redirect per request) revises `phase-03-videos/TD-07`'s playback path while preserving its two load-bearing properties — short TTL and zero API byte-proxying (a redirect is not a proxy) — and the sibling TD carries the matching `**Revisions:**` block.
+- `TD-02` (`@uppy/aws-s3`) is one of the two clients `phase-03-videos/TD-03` explicitly left open; `TD-03` (sign one part at a time) is a cadence the shipped `POST /videos/:publicId/upload/parts` contract already supports; `TD-05` (hand-rolled polling hook) is the FE side of `phase-03-videos/TD-09`'s polling decision; `TD-08` keeps the strict-BFF + `msw/node` model of `next-frontend-config-base/TD-03` and `next-frontend-msw-foundation/TD-02..TD-04` intact (storage origins are not `/api/**`).
 
 ### Unresolved Open Questions
 
-_None open._ — OQ-1..OQ-8 resolved by `/plan-resolve` on 2026-08-22; every TD of this slice now carries a filled `**Decision:**`.
-
-_No `### Open Questions from Inventory` block exists — no screen inventory is authored for this slice (see `## UI Inventory`, now `logic-only`)._
+_None._ — no TD is `pending`; OQ-1..OQ-8 stay resolved. No `### Open Questions from Inventory` block exists (logic-only placeholder).
 
 ### UI Coverage Gaps
 
-_None._ — Check 7 was skipped on the previous run because `## UI Inventory` carried the deferred token-anchor. The placeholder is now the **logic-only** token-anchor (`_Frontend-runtime only —`), which also skips UIG-N by design: the slice has no screen inventory to join against, and every TD is a runtime or contract decision. Re-run `/plan-validate videos-frontend` to confirm under the new placeholder.
+_None._ — Check 7 is skipped by design: `## UI Inventory` carries the logic-only placeholder, so there is no verb table to join against.
 
 ### Capability Consistency (slicing, phase mode only)
 
-_None._ — Check 8.a ran (phase 03 has 2 slices: `phase-03-videos`, `phase-03-videos-frontend`). All 5 `covers_capabilities` entries of this slice match `docs/project-plan.md:75,76,77,80,81` verbatim. `covers_capabilities` was **not** mutated by this resolve run (MD-1 was closed by widening `TD-07`, not by dropping a bullet), so the check's verdict stands.
+_None._ — Check 8.a ran (phase 03 has 2 slices: `phase-03-videos`, `phase-03-videos-frontend`). All 5 `covers_capabilities` entries of this slice match `docs/project-plan.md` § Fase 03 bullets verbatim. The sibling `phase-03-videos` omits `covers_capabilities` (monolithic semantics — covers every bullet of the phase).
 
 ## Cross-slice Advisories
 
-_None._ — Step 8.b ran (zero CC-N). `covered` = union of both slices = all 9 phase-03 bullets, because the sibling's omitted `covers_capabilities` claims the full set; `expected \ covered` is empty. Note the intentional overlap: 5 bullets are claimed by both slices, which is the normal shape of a backend/frontend split (each covers its own half of the same capability), not a coverage defect.
+_None._ — Step 8.b ran (zero CC-N). `covered` = union of both slices = all 9 phase-03 bullets; `expected \ covered = ∅`.
 
 ## Resolved Issues
 
