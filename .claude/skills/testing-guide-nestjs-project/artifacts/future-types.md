@@ -50,7 +50,7 @@ describe('UserRegisteredHandler', () => {
 
 ## Queue Consumers / Processors
 
-When the project adds queue processing (e.g., BullMQ for video transcoding):
+Queue processing exists since Phase 03 (pg-boss + `src/worker/`); the queue setup is in `references/external-systems.md`. Guidance for new processors:
 
 **What to test:**
 - Processor correctly handles job data

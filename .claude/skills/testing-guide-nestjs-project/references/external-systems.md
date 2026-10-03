@@ -37,89 +37,31 @@ How each external system is handled in tests. These strategies were confirmed wi
 
 ---
 
-## Object Storage — Local Filesystem
+## Object Storage — MinIO (Docker)
 
-**Strategy:** Local filesystem storage in development and tests. S3 in production.
+**Strategy:** real MinIO from `compose.yaml` (S3 API on `minio:9000`; `minio-bootstrap` creates the buckets). No filesystem adapter and no mocked S3 client — `ObjectStorageService` (`src/videos/storage/object-storage.service.ts`) talks to MinIO in integration and E2E tests.
 
 **Approach:**
-- The storage layer should use an abstraction (e.g., `StorageService` interface) that allows switching between local filesystem and S3
-- In tests, use the local filesystem adapter — no mocking needed
-- Use a temporary directory for test uploads: `os.tmpdir()` or a dedicated `test-uploads/` directory
-- Clean up test files in `afterAll`
+- Build the testing module with `ConfigModule.forRoot({ isGlobal: true, load: [storageConfig] })` and the real `ObjectStorageService`.
+- Use a fresh key per test (`service.buildSourceKey(randomUUID())`) and delete the created keys in `afterAll` with a raw `S3Client` built from the same `storageConfig()`.
+- Exercise presigned URLs for real: `fetch(url, { method: 'PUT', body })` against the signed part URL and assert on the `ETag` / status MinIO returns.
+- Browser-audience URLs are signed with `STORAGE_PUBLIC_ENDPOINT`, whose host (`localhost:9000`) is unreachable from inside the container. `src/test/jest-env.ts` (loaded by both Jest configs) pins it to the internal endpoint during tests; the browser-facing host is covered by the frontend manual smoke.
 
-**Setup pattern:**
-```typescript
-// In test module setup
-{
-  provide: 'STORAGE_CONFIG',
-  useValue: {
-    driver: 'local',
-    basePath: path.join(os.tmpdir(), 'streamtube-test-uploads'),
-  },
-}
-```
-
-**Integration test:**
-```typescript
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-
-describe('StorageService (integration)', () => {
-  const testDir = path.join(os.tmpdir(), 'streamtube-test-uploads');
-
-  afterAll(() => {
-    fs.rmSync(testDir, { recursive: true, force: true });
-  });
-
-  it('should upload and retrieve a file', async () => {
-    const buffer = Buffer.from('test content');
-    const key = await storageService.upload(buffer, 'test.txt');
-
-    const retrieved = await storageService.get(key);
-    expect(retrieved.toString()).toBe('test content');
-  });
-});
-```
+**Reference specs:** `src/videos/storage/object-storage.service.integration-spec.ts`, `src/worker/video-processor.service.integration-spec.ts` (synthesizes a tiny MP4 with `ffmpeg` instead of committing a binary fixture).
 
 ---
 
-## Message Queue — Real (Docker)
+## Message Queue — pg-boss on PostgreSQL (Docker)
 
-**Strategy:** Real message broker in Docker. The specific technology is TBD per the architecture diagram (likely BullMQ with Redis or RabbitMQ).
+**Strategy:** real pg-boss on the Compose PostgreSQL (schema `pgboss`); there is no separate broker container. `QueueService` (`src/videos/queue/queue.service.ts`) wraps it; the production queue is `video.process`.
 
-**When the queue technology is chosen, configure:**
-- A queue broker service in `compose.yaml` (e.g., Redis for BullMQ, RabbitMQ for AMQP)
-- Test isolation: use dedicated test queues or clean queues between tests
-- For publisher tests: assert the job is enqueued with correct data
-- For consumer tests: submit a job and assert the processing outcome
+**Approach:**
+- Build the module with `ConfigModule.forRoot({ isGlobal: true, load: [queueConfig] })`, then `await service.start()` in `beforeAll` (generous timeout — pg-boss creates its schema on first start) and `service.stop()` in `afterAll`.
+- Isolate tests with a **unique queue name per test** (`test.video.process.<random>`), and call `stopWorking(name)` for every queue a test consumed.
+- Delivery is asynchronous: poll with a small `waitFor(predicate)` helper instead of fixed sleeps.
+- Publisher assertions (e.g. "completing an upload enqueues a job") query `pgboss.job` directly (`SELECT data FROM pgboss.job WHERE name = $1`) and clean it with `DELETE FROM pgboss.job` in `beforeEach`.
 
-**Setup pattern (BullMQ example):**
-```typescript
-// In test module
-BullModule.forRoot({
-  connection: {
-    host: process.env.REDIS_HOST ?? 'localhost',
-    port: Number(process.env.REDIS_PORT ?? 6379),
-  },
-}),
-BullModule.registerQueue({ name: 'video-processing' }),
-```
-
-```typescript
-describe('VideoService (integration - queue)', () => {
-  it('should enqueue a processing job on upload', async () => {
-    await videoService.upload(videoData);
-
-    const queue = module.get<Queue>(getQueueToken('video-processing'));
-    const jobs = await queue.getJobs(['waiting']);
-    expect(jobs).toHaveLength(1);
-    expect(jobs[0].data).toEqual(
-      expect.objectContaining({ videoId: expect.any(String) }),
-    );
-  });
-});
-```
+**Reference specs:** `src/videos/queue/queue.service.integration-spec.ts` (consumer side), `src/videos/videos.service.integration-spec.ts` and `test/videos-upload-cycle.e2e-spec.ts` (publisher side).
 
 ---
 

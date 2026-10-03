@@ -13,6 +13,7 @@ docker compose ps   # all services must show status "running"
 Then verify each infrastructure service is actually ready to accept connections — not just running:
 
 - **PostgreSQL:** `docker compose exec db pg_isready -U streamtube` — expect `accepting connections`
+- **MinIO:** `docker compose ps minio` — expect `healthy` (its healthcheck runs `mc ready local`); `minio-bootstrap` must have exited `0` (it creates the buckets)
 
 Only start the NestJS dev server (`npm run start:dev`) when the user **explicitly** asks to run the application — never as part of "start the environment".
 
@@ -33,7 +34,10 @@ docker compose exec nestjs-api npm run start:dev
 
 Services:
 - `nestjs-api` — NestJS API, port `3000`
-- `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube` (also hosts the pg-boss queue, schema `pgboss`)
+- `mailpit` — SMTP capture, SMTP `1025`, UI `8025`
+- `minio` — object storage, S3 API `9000`, console `9001`; `minio-bootstrap` is a one-shot that creates the buckets
+- `video-worker` — consumes `video.process` (built from `Dockerfile.worker`, with FFmpeg); reads `src/` only at boot, so `docker compose restart video-worker` after backend changes
 
 All verification and teardown commands run on the **host machine**:
 
@@ -119,7 +123,7 @@ Conventions for **how to write** each kind of test (mocking patterns, AAA struct
 
 These settings are required in `package.json` (jest config) and `test/jest-e2e.json` for the project's tests to work correctly:
 
-- `setupFiles: ["dotenv/config"]` — without this, `.env` is not loaded inside the Jest process. `DB_HOST`, `JWT_SECRET`, etc. fall back to undefined or to the host's `localhost`, breaking container-to-container DNS.
+- `setupFiles: ["dotenv/config", <jest-env>]` — without `dotenv/config`, `.env` is not loaded inside the Jest process. `DB_HOST`, `JWT_SECRET`, etc. fall back to undefined or to the host's `localhost`, breaking container-to-container DNS. The second entry is `src/test/jest-env.ts`, which pins `STORAGE_PUBLIC_ENDPOINT` to the internal MinIO host (the host-published port is unreachable from inside the container).
 - `testRegex: '.*\\.(spec|integration-spec)\\.ts$'` — covers both unit (`*.spec.ts`) and integration (`*.integration-spec.ts`) suffixes.
 
 Do not add new test-file suffixes; if a new test type is needed, update the regex deliberately.

@@ -118,7 +118,7 @@ Expected controllers per project plan:
 - **UsersController** (`/users`) — registration, profile management
 - **AuthController** (`/auth`) — login, logout, password reset, email confirmation
 - **ChannelsController** (`/channels`) — channel CRUD, public page
-- **VideosController** (`/channels/:channelId/videos`) — video CRUD, upload, publish
+- **VideosController** (`/videos`) — multipart upload cycle, status, metadata, stream/download redirects (Phase 03)
 - **CommentsController** (`/videos/:videoId/comments`) — comment CRUD, nesting
 - **LikesController** — like/dislike on videos and comments
 - **SubscriptionsController** — subscribe/unsubscribe to channels
