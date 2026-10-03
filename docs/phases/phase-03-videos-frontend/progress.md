@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 14/17 completed
+**SIs:** 15/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -103,9 +103,14 @@
   - O abort no unmount é verificado pelo `request.signal` que chega ao handler MSW (o fetch interceptado propaga o `AbortSignal`).
 
 ### SI-03.15 — Tela de verificação de upload (`/videos/upload`)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 12 passing (8 em `components/videos/__tests__/upload-panel.test.tsx`, 2 em `components/videos/__tests__/processing-status.test.tsx`, 2 E2E em `tests/videos-upload.e2e-spec.ts`)
+- **Observations:**
+  - **Desvio do plano — thumbnail com `<Image unoptimized>` e sem `remotePatterns`.** A `thumbnail_url` é uma URL presigned: com otimização, o servidor do Next buscaria a imagem de um host que só o browser alcança (`localhost:9000` dentro do container é o próprio container) e o Next 16 ainda recusa otimizar IP local por padrão (`dangerouslyAllowLocalIP: false`). A doc do `next/image` instalado recomenda `unoptimized` para `src` autenticado; com ele o loader não roda e `remotePatterns` seria configuração morta (e dependente de ambiente: `storage.local:9000` nos testes, `localhost:9000` no smoke).
+  - O `?resume=<public_id>&size=<bytes>` é gravado no `draft` e **removido** no `complete` e no cancelamento — depois disso não há multipart para retomar, e um reload com o parâmetro velho levaria a um `409 INVALID_UPLOAD_STATE`.
+  - Um único botão primário: "Start upload" sem rascunho, "Resume upload" quando há um (vindo do `?resume` ou criado numa tentativa que falhou depois do `draft`) — é o "botão de retomar" do Error Catalog para falha de parte após os retries.
+  - Os testes do painel fakeiam o plano de controle na fronteira `/api/**` (camada unit, como os testes de `components/auth`); os `PUT`s vão para o fake compartilhado do storage. Cenários extras além dos planejados: `401` com link para `/login` e a retomada pelo painel (lista as partes em vez de criar rascunho; tamanho divergente barrado sem requisição).
+  - Ambiente: criado `next-frontend/.env.local` (ignorado pelo git) com `API_URL=http://host.docker.internal:3000` e um `SESSION_PASSWORD` aleatório — o container não tem variáveis no compose e o dev server não sobe sem elas; o mesmo arquivo serve ao smoke do SI-03.17. O Playwright 1.60 do projeto pedia o `chromium_headless_shell-1223`, ausente no cache do host; instalado com `npx playwright install --only-shell chromium`.
 
 ### SI-03.16 — Tela de preview de reprodução e download (`/videos/[publicId]/preview`)
 - **Status:** pending
