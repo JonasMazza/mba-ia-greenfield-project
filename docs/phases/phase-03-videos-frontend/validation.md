@@ -2,7 +2,7 @@
 kind: phase
 name: phase-03-videos-frontend
 status: dirty
-issue_count: 19
+issue_count: 0
 sources_mtime:
   docs/phases/phase-03-videos-frontend/context.md: "2026-08-15T22:47:33-03:00"
   docs/decisions/technical-decisions-phase-03-videos-frontend.md: "2026-08-15T16:25:06-03:00"
@@ -10,62 +10,81 @@ sources_mtime:
   docs/decisions/technical-decisions-phase-03-videos.md: "2026-07-24T14:25:37-03:00"
 issues:
   - id: IC-1
-    status: open
+    status: resolved
     summary: "TD-02 Scope: Frontend orphaned — UI Inventory deferred"
+    resolved_by: marker_frontend_runtime
   - id: IC-2
-    status: open
+    status: resolved
     summary: "TD-05 Renders in: frontend-runtime but UI Inventory is deferred, not logic-only"
+    resolved_by: marker_frontend_runtime
   - id: IC-3
-    status: open
+    status: resolved
     summary: "TD-07 defines a playback screen but slice has no active UI scope"
+    resolved_by: phase-03-videos-frontend/TD-07
   - id: IC-4
-    status: open
+    status: resolved
     summary: "TD-08 Scope: Frontend orphaned — UI Inventory deferred"
+    resolved_by: marker_frontend_runtime
   - id: IC-5
-    status: open
+    status: resolved
     summary: "Sibling TD-03/TD-07 shown as authoritative while TD-01/TD-04 call them broken"
+    resolved_by: revision:phase-03-videos/TD-03,phase-03-videos/TD-07
   - id: IC-6
-    status: open
+    status: resolved
     summary: "next-frontend/openapi.json gitignored vs openapi-typing/TD-02 committed copy"
+    resolved_by: clarification
   - id: IC-7
-    status: open
+    status: resolved
     summary: "No .github/workflows — openapi-typing/TD-03 CI freshness guard absent"
+    resolved_by: clarification
   - id: IC-8
-    status: open
+    status: resolved
     summary: "Testing guide claims Playwright not installed; it is installed"
+    resolved_by: clarification
   - id: AMB-1
-    status: open
+    status: resolved
     summary: "Slice admits it delivers screens but no route/screen is enumerated anywhere"
+    resolved_by: clarification
   - id: MD-1
-    status: open
+    status: resolved
     summary: "No TD decides this slice's download surface (TD-07 covers playback only)"
+    resolved_by: phase-03-videos-frontend/TD-07
   - id: DG-1
-    status: open
+    status: resolved
     summary: "types.gen.ts carries no /videos paths; OpenAPI sync is an unplanned prereq"
+    resolved_by: clarification
   - id: OQ-1
-    status: open
+    status: resolved
     summary: "TD-01 pending — browser-reachable host for presigned storage URLs"
+    resolved_by: phase-03-videos-frontend/TD-01
   - id: OQ-2
-    status: open
+    status: resolved
     summary: "TD-02 pending — multipart upload client implementation"
+    resolved_by: phase-03-videos-frontend/TD-02
   - id: OQ-3
-    status: open
+    status: resolved
     summary: "TD-03 pending — part-URL signing cadence (upload control plane)"
+    resolved_by: phase-03-videos-frontend/TD-03
   - id: OQ-4
-    status: open
+    status: resolved
     summary: "TD-04 pending — upload resume across page reload (ETag contract)"
+    resolved_by: phase-03-videos-frontend/TD-04
   - id: OQ-5
-    status: open
+    status: resolved
     summary: "TD-05 pending — processing-status tracking on the client"
+    resolved_by: phase-03-videos-frontend/TD-05
   - id: OQ-6
-    status: open
+    status: resolved
     summary: "TD-06 pending — playback URL lifetime vs. session length"
+    resolved_by: phase-03-videos-frontend/TD-06
   - id: OQ-7
-    status: open
+    status: resolved
     summary: "TD-07 pending — playback surface for this slice"
+    resolved_by: phase-03-videos-frontend/TD-07
   - id: OQ-8
-    status: open
+    status: resolved
     summary: "TD-08 pending — test strategy for the direct-to-storage byte path"
+    resolved_by: phase-03-videos-frontend/TD-08
 advisories: []
 ---
 
@@ -75,58 +94,37 @@ advisories: []
 
 ### Inconsistencies
 
-- **IC-1** — `phase-03-videos-frontend/TD-02` (Multipart Upload Client Implementation) carries `Scope: Frontend`, but `## UI Inventory` holds the deferred placeholder (`_No screen inventory — UI↔API sync deferred._`). Per Decisão #17 the TD is filtered out of the backend subsections (Data Model / API Contracts) on Scope mismatch, and no `### UI Contracts` subsection is emitted — so the TD would be **orphaned in the final plan artifact**. Explicit choice: (a) change TD Scope to `Cross-layer` — defensible, since the client's part-fetch cadence is the browser half of the same contract `TD-03` decides on the backend; (b) add active UI scope (run `/screen-inventory phase-03-videos-frontend`, then rerun `/plan-context videos-frontend`); (c) remove the TD; (d) mark `Renders in: frontend-runtime` and flip the inventory placeholder to `logic-only`.
-
-- **IC-2** — `phase-03-videos-frontend/TD-05` already carries `Renders in: frontend-runtime`, which is the correct marker for an FE-runtime architectural TD — but the marker only renders under `ui_in_scope: logic-only`. The inventory placeholder is `deferred`, not `logic-only`, so the `### Frontend Runtime` subsection is not emitted and TD-05 is orphaned anyway. Explicit choice: (a) flip the `## UI Inventory` placeholder from the deferred token-anchor to the `logic-only` token-anchor (`_Frontend-runtime only —`), which makes TD-05 render and is the cheapest fix — but note this also suppresses the deferral's documented promotion path; (b) resolve IC-3 first (activate real UI scope), which subsumes this; (c) accept the orphan and re-home TD-05 in a later slice.
-
-- **IC-3** — `phase-03-videos-frontend/TD-07` (Playback Surface for This Slice) carries `Scope: Frontend` and is, by its own title, a **screen decision** — yet `## UI Inventory` is deferred and `## Scope` (line 42 of context.md) simultaneously assigns the watch page to Fase 05. So the slice declares it will build a playback surface while declaring it has no UI scope and that the playback screen belongs to a later phase. This is the sharpest instance of the orphan class: the other three Frontend TDs are arguably cross-layer or runtime, but TD-07 is irreducibly a UI surface. Explicit choice: (a) activate UI scope for this slice — either via `/screen-inventory` (needs the Figma MCP connector, absent from `.mcp.json`) or by authoring the inventory by hand for the 1–2 screens this slice actually ships; (b) hand the whole playback surface to Fase 05 and drop `Reprodução via streaming` + TD-07 from this slice; (c) restate TD-07 as `Cross-layer` covering only the playback *contract* (which URL shape the browser consumes), with zero screen commitment.
-
-- **IC-4** — `phase-03-videos-frontend/TD-08` (Test Strategy for the Direct-to-Storage Byte Path) carries `Scope: Frontend` with the inventory deferred → same orphan mechanics as IC-1. Explicit choice: (a) change Scope to `Cross-layer` — the byte path it tests spans browser → MinIO and the decision constrains backend CORS/presign behaviour as much as frontend test wiring; (b) `Renders in: frontend-runtime` + `logic-only` inventory; (c) remove.
-
-- **IC-5** — `## Inherited Decisions Detail` presents `phase-03-videos/TD-03` (presigned S3 multipart handshake) and `phase-03-videos/TD-07` (presigned URL as the primary playback path, "zero API byte-proxying") as settled, authoritative inherited decisions. At the same time `## Scope` (line 49) states that this slice's `TD-01` and `TD-04` exist because the browser-facing half of those very contracts is "provably broken" or "missing", and TD-06 is expected to route playback through a same-origin endpoint instead of handing the browser a raw presigned URL. Nothing on the sibling doc records that its contracts are under revision, so `phase-03-videos`' own `context.md` and built artifact keep asserting the superseded shape. Explicit choice: when `/plan-resolve` decides TD-01 / TD-04 / TD-06, also append a `**Revisions:**` block to `phase-03-videos/TD-03` and `phase-03-videos/TD-07` naming the revising TDs (the "Append revision to TD-YY" primitive), so the sibling stops asserting a contract this slice replaces. Alternative: (b) record the divergence as a deliberate FE-only overlay and leave the sibling untouched — cheaper, but leaves two documents describing the same wire contract differently.
-
-- **IC-6** — Inherited `next-frontend-openapi-typing/TD-02` decided **Option B — committed local copy + repo-root sync script**, and its stated rationale is that the committed `next-frontend/openapi.json` is "a real artifact in PR review" whose diff makes contract drift visible. The repo contradicts this: `next-frontend/.gitignore:42` lists `openapi.json`, the file is untracked, and it is not on disk. The sync script (`scripts/sync-openapi.sh`) exists and is executable. Consequence for this slice: the DG-1 fix (running the sync) produces a file git silently refuses to stage, so the drift-visibility mechanism TD-02 depends on fails without any error. Explicit choice: (a) honor TD-02 — remove `openapi.json` from `next-frontend/.gitignore` and commit both `openapi.json` and `types.gen.ts` in the same PR, per the `next-frontend-bff-api.md` rule; (b) supersede TD-02 to Option A (generate-on-demand, uncommitted) and update the rule doc to match.
-
-- **IC-7** — Inherited `next-frontend-openapi-typing/TD-03` decided **Option C — committed + CI freshness check**, explicitly arguing that Option A ("acceptable as a temporary state until the CI pipeline lands") is the weaker fallback. `next-frontend/CLAUDE.md` and the TD both describe the guard as existing. It does not: there is no `.github/` directory at all, hence no `.github/workflows/openapi-freshness.yml`. Consequence: nothing prevents the `/videos` contract from drifting again after this slice ships — which is exactly the failure DG-1 documents having already happened once. Explicit choice: (a) author the workflow as part of this slice (small: one job running `scripts/sync-openapi.sh` + `npm run openapi:types` and asserting an empty diff) — pairs naturally with IC-6, since the guard only works if the artifacts are committed; (b) downgrade TD-03 to Option A and correct the claims in `next-frontend/CLAUDE.md` so the docs stop asserting a guard that does not exist; (c) record it as a separate infra task and keep this slice's scope clean — respects *Scope Limits*, but leaves (b)'s doc-vs-reality lie in place until that task runs.
-
-- **IC-8** — `## Testing Requirements` carries a note flagging that the `testing-guide-next-frontend` skill's tooling-status block states "Playwright is not yet installed", while `next-frontend/package.json` carries `@playwright/test@^1.60.0`, `playwright.config.ts` exists, and `test:e2e` is defined (all three verified). The note is correct that the guide's E2E recipes remain binding — the plan is not affected. The residual risk is at `/implement` time, which loads the guide skill directly (not context.md) and could scaffold Playwright a second time. This bears on TD-08, whose likely resolution is Playwright-based. Explicit choice: (a) correct the status line in `.claude/skills/testing-guide-next-frontend/SKILL.md` as a standalone chore before `/implement` — note this mutates a `sources_mtime` key and will force one `/plan-context videos-frontend` rerun, so do it *before* `/plan-resolve` or *after* the build; (b) accept as documented-and-known, relying on the context.md note.
+_None open._ — IC-1..IC-8 resolved by `/plan-resolve` on 2026-08-22; see `## Resolved Issues`.
 
 ### Ambiguities
 
-- **AMB-1** — The deferral note in `## UI Inventory` states plainly that "the slice **does** deliver screens", and `## Affected subprojects` commits to an "Upload screen" and a "minimal playback/download surface" — but no artifact enumerates which screens, at which routes, with which entry points. `/screen-inventory` was skipped, and no TD carries route information. `/plan-build` would therefore have to invent routes to write screen-wiring SIs. The concrete risk is collision: Fase 05 owns the watch page, and the natural route for a "minimal playback surface" is `/watch/:publicId` — the exact route Fase 05 will claim. Explicit choice: (a) run `/screen-inventory phase-03-videos-frontend` (blocked on the Figma MCP connector, absent from `.mcp.json`); (b) hand-author a minimal inventory listing the 2–3 screens and their routes — sufficient to unblock, and it also resolves IC-1..IC-4; (c) add an explicit route list to `## Scope` via a decisions-doc edit and rerun `/plan-context videos-frontend`, deliberately choosing throwaway routes (e.g. `/videos/:publicId/preview`) that cannot collide with Fase 05.
+_None open._ — AMB-1 resolved by `/plan-resolve` on 2026-08-22.
 
 ### Missing Decisions
 
-- **MD-1** — The capability **"Download do vídeo pelo usuário"** is claimed by this slice (`covers_capabilities`, verified verbatim against `project-plan.md:81`) and `## Capability Coverage` maps it to TD-01 + TD-06. But both of those decide *URL mechanics* (reachable host; URL lifetime), not a surface — and `## Scope` line 42 explicitly assigns `Botão de download do vídeo` to Fase 05. TD-07 exists as the surface decision for playback; there is no counterpart for download. So the slice owns a capability whose only user-facing surface it has de-scoped, with no TD to decide what it ships instead. Explicit choice: (a) run `/research videos-frontend` to add a TD deciding this slice's download surface (parallel to TD-07 — plausibly "a plain `<a download>` on the same minimal surface, no dedicated screen"); (b) drop `"Download do vídeo pelo usuário"` from this slice's `covers_capabilities` and let Fase 05 own it — cross-slice coverage stays intact because the sibling `phase-03-videos` omits `covers_capabilities` (monolithic semantics = covers all); (c) fold the download surface into TD-07 by widening its `Capability:` field to cover both bullets.
+_None open._ — MD-1 resolved by `/plan-resolve` on 2026-08-22 without a new TD (folded into the widened `TD-07`).
 
 ### Dependency Gaps
 
-- **DG-1** — `next-frontend/lib/api/types.gen.ts` contains **zero `/videos` paths** (verified: only `/` and `/auth/*` — 10 path entries, all Fase 02). Every frontend artifact this slice commits to depends on those types: the `paths`-typed BFF Route Handlers under `app/api/videos/**`, the video aliases in `lib/api/contracts.ts` (which inherited `next-frontend-openapi-typing/TD-04` makes the *only* file allowed to import `paths`), and `mocks/handlers/videos.ts` (typed off `paths` per `openapi-typing/TD-05`). The upstream half is already delivered — `nestjs-project/openapi.json` was regenerated and committed in `048aeec` — but the two-step propagation into the frontend has not run, and neither `## Scope`, nor any TD, nor the sibling's `progress.md` records it as a prerequisite. Explicit choice: (a) make it an explicit first SI in `/plan-build` — `bash scripts/sync-openapi.sh` (host) followed by `docker compose exec next-frontend npm run openapi:types` (container) — blocking every other frontend SI in the Dependency Map; (b) run it now as pre-work and note it in the plan as a satisfied precondition. Either way it interacts with **IC-6**: with `openapi.json` gitignored, step (a) produces an artifact git will not stage.
+_None open._ — DG-1 resolved by `/plan-resolve` on 2026-08-22 as a blocking first SI for `/plan-build`.
 
 ### Inherited Constraint Conflicts
 
-_None._ — Check 5 compares **decided** current-scope TDs against inherited conventions and TDs; all 8 TDs of this slice are `pending`, so the check is vacuous this run. Re-run after `/plan-resolve`: TD-01 and TD-06 are the likely candidates to surface an ICC against `phase-03-videos/TD-03` and `TD-07` (see IC-5, which records the same tension at the documentation level while the decisions are still open).
+_None._ — Check 5 compares **decided** current-scope TDs against inherited conventions and TDs; at the time this file was written all 8 TDs were `pending`, so the check was vacuous. **All 8 are now decided** — re-run `/plan-validate videos-frontend` so Check 5 executes for real. TD-01 and TD-06 are the expected candidates to surface an ICC against `phase-03-videos/TD-03` and `TD-07`; both sibling TDs now carry a `**Revisions:**` block recording exactly that divergence (see IC-5), which is the intended landing place for it.
 
 ### Unresolved Open Questions
 
-- **OQ-1** — `phase-03-videos-frontend/TD-01` pending — Browser-Reachable Host for Presigned Storage URLs (`Scope: Cross-layer`). Resolution: fill the **Decision:** field of TD-01 in `docs/decisions/technical-decisions-phase-03-videos-frontend.md`, then re-run `/plan-validate videos-frontend`.
-- **OQ-2** — `phase-03-videos-frontend/TD-02` pending — Multipart Upload Client Implementation (`Scope: Frontend`). Resolution: as OQ-1.
-- **OQ-3** — `phase-03-videos-frontend/TD-03` pending — Part-URL Signing Cadence, the upload control-plane contract (`Scope: Cross-layer`). Resolution: as OQ-1.
-- **OQ-4** — `phase-03-videos-frontend/TD-04` pending — Upload Resume Across Page Reload, the missing ETag contract (`Scope: Cross-layer`). Resolution: as OQ-1.
-- **OQ-5** — `phase-03-videos-frontend/TD-05` pending — Processing-Status Tracking on the Client (`Scope: Frontend`, `Renders in: frontend-runtime`). Resolution: as OQ-1.
-- **OQ-6** — `phase-03-videos-frontend/TD-06` pending — Playback URL Lifetime vs. Session Length (`Scope: Cross-layer`). Resolution: as OQ-1.
-- **OQ-7** — `phase-03-videos-frontend/TD-07` pending — Playback Surface for This Slice (`Scope: Frontend`). Resolution: as OQ-1. See also IC-3 and AMB-1 — this TD cannot be fully resolved without settling whether the slice has UI scope.
-- **OQ-8** — `phase-03-videos-frontend/TD-08` pending — Test Strategy for the Direct-to-Storage Byte Path (`Scope: Frontend`). Resolution: as OQ-1.
+_None open._ — OQ-1..OQ-8 resolved by `/plan-resolve` on 2026-08-22; every TD of this slice now carries a filled `**Decision:**`.
 
-_No `### Open Questions from Inventory` block exists — `## UI Inventory` holds the deferred placeholder, so there are no inventory-originated open questions to ingest._
+_No `### Open Questions from Inventory` block exists — no screen inventory is authored for this slice (see `## UI Inventory`, now `logic-only`)._
 
 ### UI Coverage Gaps
 
-_None._ — Check 7 is skipped entirely: `## UI Inventory` carries the deferred token-anchor (`_No screen inventory —`), and UIG-N never fires when the user has explicitly opted out of the inventory. The consequences of that deferral are captured instead by IC-1..IC-4 (orphaned `Scope: Frontend` TDs) and AMB-1 (no route enumeration).
+_None._ — Check 7 was skipped on the previous run because `## UI Inventory` carried the deferred token-anchor. The placeholder is now the **logic-only** token-anchor (`_Frontend-runtime only —`), which also skips UIG-N by design: the slice has no screen inventory to join against, and every TD is a runtime or contract decision. Re-run `/plan-validate videos-frontend` to confirm under the new placeholder.
 
 ### Capability Consistency (slicing, phase mode only)
 
-_None._ — Check 8.a ran (phase 03 has 2 slices: `phase-03-videos`, `phase-03-videos-frontend`). All 5 `covers_capabilities` entries of this slice match `docs/project-plan.md:75,76,77,80,81` verbatim. The sibling `phase-03-videos` omits `covers_capabilities` entirely, which the slicing convention reads as monolithic semantics (covers all bullets of its phase) — nothing to verify there, and no restamp is required since its frontmatter was never mutated.
+_None._ — Check 8.a ran (phase 03 has 2 slices: `phase-03-videos`, `phase-03-videos-frontend`). All 5 `covers_capabilities` entries of this slice match `docs/project-plan.md:75,76,77,80,81` verbatim. `covers_capabilities` was **not** mutated by this resolve run (MD-1 was closed by widening `TD-07`, not by dropping a bullet), so the check's verdict stands.
 
 ## Cross-slice Advisories
 
@@ -134,4 +132,45 @@ _None._ — Step 8.b ran (zero CC-N). `covered` = union of both slices = all 9 p
 
 ## Resolved Issues
 
-_No issues resolved yet._
+All resolutions below were applied by `/plan-resolve videos-frontend` on **2026-08-22**, from explicit user answers.
+
+### Technical decisions filled (OQ-1..OQ-8)
+
+- **OQ-1** — TD-01 pending — browser-reachable host for presigned storage URLs. `resolved_by: phase-03-videos-frontend/TD-01` — **Option A**, dual endpoint: separate internal and public signing clients. The worker's internal presign at `video-processor.service.ts:79` keeps the internal endpoint; the five browser-facing call sites move to the public one.
+- **OQ-2** — TD-02 pending — multipart upload client implementation. `resolved_by: phase-03-videos-frontend/TD-02` — **Option A**, `@uppy/aws-s3` in multipart mode used headlessly (Uppy core + plugin, this project's own React UI on top). Libraries cached in `library-refs.md`.
+- **OQ-3** — TD-03 pending — part-URL signing cadence. `resolved_by: phase-03-videos-frontend/TD-03` — **Option A**, sign one part at a time, on demand. This is Uppy's native `signPart` cadence, so TD-02's choice makes it the default rather than a customization.
+- **OQ-4** — TD-04 pending — upload resume across page reload. `resolved_by: phase-03-videos-frontend/TD-04` — **Option B**, the backend exposes the uploaded parts via an owner-scoped `GET /videos/:publicId/upload/parts` (404-not-403 semantics, matching its siblings). Maps one-to-one onto Uppy's `listParts` hook. Second and last backend change this slice proposes.
+- **OQ-5** — TD-05 pending — processing-status tracking on the client. `resolved_by: phase-03-videos-frontend/TD-05` — **Option A**, hand-rolled `useVideoStatus` hook mirroring `use-session.ts`. Explicitly flagged for Fase 04 research: revisit TanStack Query v5 as a deliberate agenda item, not by default.
+- **OQ-6** — TD-06 pending — playback URL lifetime vs. session length. `resolved_by: phase-03-videos-frontend/TD-06` — **Option C**, a stable same-origin BFF URL issuing a fresh redirect per request. Keeps the short TTL and Node out of the byte path, and upgrades issuance-time-only authorization to per-request authorization.
+- **OQ-7** — TD-07 pending — playback surface for this slice. `resolved_by: phase-03-videos-frontend/TD-07` — **Option A**, native `<video controls>`. Vidstack and video.js stay on record as the Fase 05 shortlist, with HLS as the tiebreaker.
+- **OQ-8** — TD-08 pending — test strategy for the direct-to-storage byte path. `resolved_by: phase-03-videos-frontend/TD-08` — **Option A + C**: Option A as the automated baseline (Vitest with `msw/node` faking both planes; Playwright stubs the storage host) plus Option C's manual smoke against the real stack as an explicit Definition-of-Done item. Option B (full-stack Playwright against real NestJS + MinIO) recorded as a follow-up task after the slice lands.
+
+### Orphaned-TD cluster (IC-1, IC-2, IC-4)
+
+- **IC-1** — TD-02 `Scope: Frontend` orphaned under a deferred inventory. `resolved_by: marker_frontend_runtime` — `**Renders in:** frontend-runtime` injected into `phase-03-videos-frontend/TD-02`; `## UI Inventory` body flipped to the logic-only token-anchor; `## Decisions Detail` + `## Decisions Index` row patched in context.md.
+- **IC-2** — TD-05 already carried the marker but it only renders under `logic-only`. `resolved_by: marker_frontend_runtime` — same `## UI Inventory` flip (idempotent, applied once for the whole cluster). TD-05's marker was additionally reordered to the canonical `Decision → Renders in` position in the decisions doc.
+- **IC-4** — TD-08 `Scope: Frontend` orphaned, same mechanics as IC-1. `resolved_by: marker_frontend_runtime` — `**Renders in:** frontend-runtime` injected into `phase-03-videos-frontend/TD-08`; same inventory flip.
+
+### Scope and coverage
+
+- **IC-3** — TD-07 was irreducibly a screen decision in a slice with no active UI scope. `resolved_by: phase-03-videos-frontend/TD-07` — TD-07 restated as `Scope: Cross-layer` and retitled *Playback & Download Contract for This Slice*: it now decides the contract the browser consumes (which URL shape, which element) with **zero screen commitment**. Coherent with `## Scope` handing the watch page to Fase 05.
+- **MD-1** — no TD decided this slice's download surface. `resolved_by: phase-03-videos-frontend/TD-07` — closed **without** new research by widening TD-07's `**Capability:**` to also cover `"Download do vídeo pelo usuário"`. TD-06 (Option C) already delivers the mechanism — the same BFF redirect with `downloadFilename` set — so the surface is a plain `<a download>` on the verification page. `## Capability Coverage` in context.md updated to `TD-01, TD-06, TD-07`.
+- **AMB-1** — no artifact enumerated the slice's screens or routes. `resolved_by: clarification` — an explicit route list was added to the decisions doc, deliberately chosen so it cannot collide with Fase 05's `/watch/:publicId`:
+  - `/videos/upload` — upload screen (TD-02, TD-03, TD-04) + processing-status surface (TD-05).
+  - `/videos/:publicId/preview` — minimal playback/download surface proving the streaming and download contracts (TD-06, TD-07). Fase 05 replaces it with the real watch page; nothing else may link to it as a permanent destination.
+
+### Sibling-contract divergence
+
+- **IC-5** — the sibling `phase-03-videos` kept asserting contracts this slice replaces. `resolved_by: revision:phase-03-videos/TD-03,phase-03-videos/TD-07` — a `**Revisions:**` block was appended to both sibling TDs, dated 2026-08-22, naming the revising TDs (`TD-01`, `TD-04` for the multipart handshake; `TD-06`, `TD-01` for the playback path) with the rationale *"browser-facing half of the contract revised by the frontend slice"*. The sibling's protocol choices themselves are unchanged.
+
+  > **Sibling restamp needed.** `docs/decisions/technical-decisions-phase-03-videos.md` was mutated, so `docs/phases/phase-03-videos/`'s `context.md`, `validation.md` and built artifact now carry stale `sources_mtime` entries for it. Run `/plan-context phase-03-videos` when convenient — this slice is unaffected (its own `context.md` tracks the sibling's `context.md`, not the sibling's decisions doc).
+
+### Carried into `/plan-build` as plan actions
+
+- **DG-1** — `types.gen.ts` carries no `/videos` paths. `resolved_by: clarification` — becomes an **explicit first SI** in `/plan-build`: `bash scripts/sync-openapi.sh` (host) then `docker compose exec next-frontend npm run openapi:types` (container), blocking every other frontend SI in the Dependency Map.
+- **IC-6** — `next-frontend/openapi.json` is gitignored although `openapi-typing/TD-02` calls it committed. `resolved_by: clarification` — **honor TD-02**: remove `openapi.json` from `next-frontend/.gitignore` and commit both `openapi.json` and `types.gen.ts` in the same PR, per `.claude/rules/next-frontend-bff-api.md`. Folded into the DG-1 SI, since the sync step is what produces the artifact git currently refuses to stage.
+- **IC-7** — the `openapi-typing/TD-03` CI freshness guard does not exist (no `.github/` at all). `resolved_by: clarification` — **author the workflow in this slice**: `.github/workflows/openapi-freshness.yml`, one job running `scripts/sync-openapi.sh` + `npm run openapi:types` and asserting an empty diff. Pairs with IC-6 — the guard only works once the artifacts are committed.
+
+### Deferred to a post-build chore
+
+- **IC-8** — `testing-guide-next-frontend`'s tooling-status block claims Playwright is not installed, but `@playwright/test@^1.60.0`, `playwright.config.ts` and `test:e2e` all exist. `resolved_by: clarification` — the plan is unaffected; the status line is corrected **after** `/plan-build`, as a standalone chore, so it cannot invalidate a `sources_mtime` key mid-pipeline. Removes the risk that `/implement` (which loads the skill directly, not context.md) scaffolds Playwright a second time while implementing TD-08.

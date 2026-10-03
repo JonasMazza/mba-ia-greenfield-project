@@ -1,7 +1,7 @@
 ---
 scope_type: phase
 related_phases: [3]
-status: pending
+status: decided
 date: 2026-08-15
 scope_description: "Frontend slice of Phase 03 — the upload interface for files up to 10GB (resumable, browser → object storage direct), the processing-status tracking surface, and a minimal playback/download surface proving the streaming contract. Backend is settled in `phase-03-videos/TD-01..TD-09` and is not reopened, except where the browser-facing URL contract is provably broken (TD-01) or missing (TD-04)."
 covers_capabilities:
@@ -36,6 +36,12 @@ _Subprojects in scope:_
 > **Strict BFF is not violated by this slice — it is partitioned.** The *control plane* (create draft, request signed URLs, complete, abort, status, playback-URL issuance) goes through `app/api/videos/**` exclusively; the browser never learns `API_URL`. The *byte path* (part `PUT`s, media `GET`s) goes browser ⇄ object storage directly, which is the entire point of `phase-03-videos/TD-03` and `TD-07`. This is a partition of responsibilities, not an exception to the BFF — recorded here so it is explicit rather than implicit.
 
 > **Mechanical prerequisite (not a decision).** `next-frontend/lib/api/types.gen.ts` currently contains **zero** `/videos` paths. Before any SI of this slice, run `bash scripts/sync-openapi.sh` (host) then `npm run openapi:types` (container), per `.claude/rules/next-frontend-bff-api.md`. Two known drifts, both pre-existing debt outside this slice: `next-frontend/openapi.json` is gitignored although `openapi-typing/TD-02` calls it "committed", and `.github/workflows/openapi-freshness.yml` (the CI guard cited by `openapi-typing/TD-03`) does not exist.
+
+> **Routes owned by this slice** (resolved 2026-08-22, `AMB-1`). This slice ships exactly two screens, at routes chosen deliberately so they cannot collide with Fase 05's `/watch/:publicId`:
+> - `/videos/upload` — the upload screen (TD-02, TD-03, TD-04) and the processing-status surface (TD-05).
+> - `/videos/:publicId/preview` — the minimal playback/download surface that proves the streaming and download contracts (TD-06, TD-07). Fase 05 replaces it with the real watch page; nothing else may link to it as a permanent destination.
+>
+> No screen inventory is authored for this slice: both screens are throwaway verification surfaces, and every TD here is a runtime or contract decision rather than a screen decision.
 
 ---
 
@@ -75,7 +81,7 @@ The last two rows are the decisive pair: SigV4 signs the `host` header (`X-Amz-S
 
 **Recommendation:** **Option A.** It is the only option that survives contact with production, where the internal and public endpoints genuinely differ and Option B's single-hostname trick has no analogue. It also fixes the worker by construction: the bug that hid from 282 passing tests did so precisely because "which host should this URL carry?" was never an explicit question, and Option A makes it one at every call site. Option B is a legitimate lower-cost choice if the priority is zero backend churn during a frontend slice — the trade is a deferred migration plus an offline-DNS dependency, and it is defensible if accepted knowingly. Option C is out.
 
-**Decision:** _[pending]_
+**Decision:** A — dual endpoint: separate internal and public signing clients.
 
 ---
 
@@ -106,7 +112,9 @@ The last two rows are the decisive pair: SigV4 signs the `host` header (`X-Amz-S
 
 **Recommendation:** **Option A, used headlessly** (Uppy core + `@uppy/aws-s3`, this project's own React UI on top). The four override hooks map one-to-one onto the four endpoints already shipped, so the integration is configuration rather than translation, and the risky mechanics — retry, concurrency, ETag accounting, cancellation — arrive tested. Option B is defensible if dependency minimalism outweighs that, but it should be chosen with eyes open: the code it replaces is small in volume and large in failure modes, and the failure modes appear only under conditions this project cannot easily reproduce. Note the choice is not fully independent of TD-04 — Option A brings a resume story with it.
 
-**Decision:** _[pending]_
+**Decision:** A — `@uppy/aws-s3` in multipart mode, used headlessly (Uppy core + the plugin, with this project's own React UI on top).
+**Renders in:** frontend-runtime
+**Libraries:** @uppy/core, @uppy/aws-s3
 
 ---
 
@@ -137,7 +145,7 @@ The last two rows are the decisive pair: SigV4 signs the `host` header (`X-Amz-S
 
 **Recommendation:** **Option A.** It removes an entire failure class rather than tuning it: no window size to calibrate against unknown link speeds, no 403-and-retry path to write and test, and the resume flow reduces to "ask for the parts still missing" with no branch. The cost is ~160 lightweight control-plane calls against a payload three orders of magnitude larger. It is also what Option A of TD-02 does natively, so if Uppy is chosen this cadence is the default rather than a customization. Option B is a reasonable optimization **later**, if control-plane chattiness ever measures as a real problem; adopting it up front buys latency that does not matter and pays with a tunable that does.
 
-**Decision:** _[pending]_
+**Decision:** A — sign one part at a time, on demand.
 
 ---
 
@@ -173,7 +181,7 @@ This is a genuine gap in the shipped contract, not a frontend styling question, 
 
 **Recommendation:** **Option B.** The information needed to resume already exists in MinIO and is already retrievable by code that is already written and tested; Option A's alternative is to have the browser keep a private, losable copy of it. For a capability whose entire purpose is surviving failure, storing the recovery key only in the client is the wrong custodian — Option A survives a reload but not a cleared cache, a different browser, or a different machine, and those are ordinary events across a multi-hour upload. The backend cost is genuinely small: `listUploadedParts()` is done, and the addition is one owner-scoped read endpoint with the same 404-not-403 ownership semantics as its siblings. This is the second and last backend change this slice proposes, and like TD-01 it exists to repair a browser-facing contract, not to add a feature. Option C should be chosen only if the §4 requirement is explicitly relaxed.
 
-**Decision:** _[pending]_
+**Decision:** B — the backend exposes the uploaded parts via an owner-scoped `GET /videos/:publicId/upload/parts`.
 
 ---
 
@@ -204,9 +212,8 @@ This is a genuine gap in the shipped contract, not a frontend styling question, 
 
 **Recommendation:** **Option A for this slice.** Adopting a data layer for the whole application on the strength of one polling loop is a large decision resting on a small case, and Option B's benefits — cache, dedup, invalidation — are mostly about *lists and mutations*, which is Fase 04's dashboard, not this slice. The hook is small, mirrors `use-session.ts`, and is straightforwardly replaced. The honest caveat: if Option B is going to be adopted, adopting it at Fase 04 with the dashboard's real requirements in hand is better-informed than adopting it here — but arriving at Fase 04 having written two bespoke fetching hooks is the failure mode to watch for. **Flag for Fase 04's research: revisit as a deliberate agenda item, not by default.** Option C is not competitive for a single polled field.
 
+**Decision:** A — hand-rolled `useVideoStatus` hook for this slice, mirroring `use-session.ts`. Flagged for Fase 04 research: revisit TanStack Query v5 as a deliberate agenda item with the dashboard's real requirements in hand, not by default.
 **Renders in:** frontend-runtime
-
-**Decision:** _[pending]_
 
 ---
 
@@ -237,15 +244,15 @@ This is a genuine gap in the shipped contract, not a frontend styling question, 
 
 **Recommendation:** **Option C.** It is the only option that resolves the tension instead of trading one side away: Option A buys simplicity with a weaker credential, Option B keeps the credential and pays with permanent player-side complexity that Fase 05 would inherit, and Option C keeps the short TTL *and* leaves the player trivial, because the expiry problem stops existing rather than being handled. It also improves on the access control `TD-07` explicitly listed as its own weakness — issuance-time-only authorization becomes per-request authorization — while keeping Node out of the byte path, which was `TD-07`'s reason for existing. The download button is the same mechanism with `downloadFilename` set. Note this does **not** remove the need for TD-01: the `Location` header still names a host the browser must resolve.
 
-**Decision:** _[pending]_
+**Decision:** C — a stable same-origin BFF URL that issues a fresh redirect per request. Download is the same mechanism with `downloadFilename` set.
 
 ---
 
-## TD-07: Playback Surface for This Slice
+## TD-07: Playback & Download Contract for This Slice
 
-**Scope:** Frontend
+**Scope:** Cross-layer
 
-**Capability:** "Reprodução via streaming (sem necessidade de download completo)"
+**Capability:** Transversal — covers: "Reprodução via streaming (sem necessidade de download completo)", "Download do vídeo pelo usuário"
 
 **Context:** Fase 03 must demonstrate that streaming works — playback starts without downloading the whole file, and seeking issues `Range` requests. Fase 05 owns the actual watch page and its controls. The risk is choosing a player library here, on the strength of a verification surface, and thereby deciding Fase 05's player before its design exists.
 
@@ -268,7 +275,7 @@ This is a genuine gap in the shipped contract, not a frontend styling question, 
 
 **Recommendation:** **Option A.** The job here is to prove the streaming contract end-to-end, and the native element does that with the least machinery between the test and the thing being tested. Deferring is not indecision: Fase 05's bullets name the controls it needs, and choosing its player now — from a phase whose interest in playback is verification — would be deciding with strictly less information than Fase 05 will have. The transitional cost is a handful of markup lines. Keep Vidstack and video.js on the record as the Fase 05 shortlist, with HLS (`phase-03-videos/TD-07`'s roadmap item) as the tiebreaker when it arrives.
 
-**Decision:** _[pending]_
+**Decision:** A — native `<video controls>`. Restated as `Scope: Cross-layer` (`IC-3`): TD-07 decides the playback/download *contract* the browser consumes — which URL shape, which element — with zero screen commitment. Widened to cover "Download do vídeo pelo usuário" (`MD-1`): the download surface is a plain `<a download>` on the same `/videos/:publicId/preview` verification page, pointing at the TD-06 BFF URL with `downloadFilename` set. Vidstack and video.js stay on record as the Fase 05 shortlist, with HLS as the tiebreaker.
 
 ---
 
@@ -299,7 +306,8 @@ This is a genuine gap in the shipped contract, not a frontend styling question, 
 
 **Recommendation:** **Option A as the automated baseline, plus Option C's manual smoke as an explicit Definition-of-Done item for this slice** — with Option B recorded as the follow-up once the slice is stable. The reasoning is what TD-01 demonstrated: a fully green suite proved nothing about the browser-facing contract, because every test ran inside Docker. Option A alone would repeat that mistake in a new place, so *something* must touch the real seams; but standing up a second Playwright harness mid-slice adds infrastructure risk to the slice least able to absorb it. The manual smoke is the honest middle — and unlike most manual steps it is cheap here, because the stack is already running and the check is "upload a file, watch it play". If Option B is chosen, it belongs in its own task after this slice lands, not inside it.
 
-**Decision:** _[pending]_
+**Decision:** A + C — Option A as the automated baseline (Vitest with `msw/node` faking both planes; Playwright stubs the storage host), plus Option C's manual smoke against the real stack as an explicit Definition-of-Done item for this slice. Option B (full-stack Playwright against real NestJS + real MinIO) is recorded as a follow-up task after the slice lands, not inside it.
+**Renders in:** frontend-runtime
 
 ---
 
@@ -307,11 +315,11 @@ This is a genuine gap in the shipped contract, not a frontend styling question, 
 
 | ID | Scope | Decision | Recommendation | Choice |
 |----|-------|----------|----------------|--------|
-| TD-01 | Cross-layer | Browser-reachable host for presigned storage URLs | A (dual endpoint — separate internal/public signing clients) | _[pending]_ |
-| TD-02 | Frontend | Multipart upload client implementation | A (`@uppy/aws-s3` used headlessly) | _[pending]_ |
-| TD-03 | Cross-layer | Part-URL signing cadence (upload control-plane contract) | A (sign one part at a time, on demand) | _[pending]_ |
-| TD-04 | Cross-layer | Upload resume across page reload (missing ETag contract) | B (backend exposes `GET /videos/:publicId/upload/parts`) | _[pending]_ |
-| TD-05 | Frontend | Processing-status tracking on the client | A (hand-rolled hook; revisit at Fase 04) | _[pending]_ |
-| TD-06 | Cross-layer | Playback URL lifetime vs. session length | C (stable same-origin BFF URL, 307 per request) | _[pending]_ |
-| TD-07 | Frontend | Playback surface for this slice | A (native `<video controls>`; defer player to Fase 05) | _[pending]_ |
-| TD-08 | Frontend | Test strategy for the direct-to-storage byte path | A + manual smoke (Option B as follow-up) | _[pending]_ |
+| TD-01 | Cross-layer | Browser-reachable host for presigned storage URLs | A (dual endpoint — separate internal/public signing clients) | A |
+| TD-02 | Frontend | Multipart upload client implementation | A (`@uppy/aws-s3` used headlessly) | A |
+| TD-03 | Cross-layer | Part-URL signing cadence (upload control-plane contract) | A (sign one part at a time, on demand) | A |
+| TD-04 | Cross-layer | Upload resume across page reload (missing ETag contract) | B (backend exposes `GET /videos/:publicId/upload/parts`) | B |
+| TD-05 | Frontend | Processing-status tracking on the client | A (hand-rolled hook; revisit at Fase 04) | A |
+| TD-06 | Cross-layer | Playback URL lifetime vs. session length | C (stable same-origin BFF URL, 307 per request) | C |
+| TD-07 | Cross-layer | Playback & download contract for this slice | A (native `<video controls>`; defer player to Fase 05) | A |
+| TD-08 | Frontend | Test strategy for the direct-to-storage byte path | A + manual smoke (Option B as follow-up) | A + C |
