@@ -99,3 +99,20 @@ Dois defeitos latentes do repositório base apareceram só ao rodar a suíte com
   - **O nome do arquivo original não é persistido** — o Data Model não tem coluna `filename` (o `filename` do `POST /videos` só alimenta a chave de storage). O `Content-Disposition` do download usa `title` quando existe, senão o `public_id`, com extensão derivada do `content_type`. Se a Fase 04 quiser o nome original, precisa de uma coluna nova.
   - A asserção pendente do SI-03.5 sobre `GET /:publicId` após abort foi apertada para exigir `errorCode: VIDEO_NOT_FOUND`. **Nenhuma pendência de spec resta.**
   - O teste de não-vazamento compara o corpo da resposta byte a byte com o de um `public_id` inexistente, em `draft`/`processing`/`failed`, anônimo e autenticado — é a garantia de que os dois casos são indistinguíveis, não só de que ambos são 404.
+
+## Revisão final (2026-10-03)
+
+Code review de `main...dev` antes de levar a fase para `main`.
+
+- **Corrigido — PR #4 (`bugfix/enforce-uploaded-size`):** o teto de 10 GiB só olhava o `size_bytes` declarado; o `complete` agora soma as partes guardadas no storage e recusa (`409 UPLOAD_SIZE_MISMATCH`) se não baterem com o declarado. `listUploadedParts` passou a paginar em 1000 partes (limite do S3; o MinIO devolve até 10 000, por isso nada quebrava localmente).
+- **Corrigido — PR #3 (`docs/phase-03-doc-coherence`):** citações de arquivos inexistentes nos `CLAUDE.md`/README, fila `TBD` no diagrama C4, guia de testes do backend descrevendo storage em disco e BullMQ.
+
+### Follow-ups (não bloqueiam a entrega; decidir antes de implementar)
+
+1. **Partes órfãs sem teto de tamanho.** Cada URL de parte é assinada sem `Content-Length`, então partes nunca concluídas podem ocupar até 5 GiB cada até a limpeza de uploads parados do MinIO. Fechar exige persistir o tamanho de parte (migration) e assinar o `Content-Length`.
+2. **Draft preso após `complete` parcial.** O storage conclui o multipart antes da transação; se a transação falhar (ou o MinIO expirar o upload), `complete`/`abort` passam a dar `NoSuchUpload` → 500 para sempre. Os dois deveriam tolerar `NoSuchUpload` (conferir o objeto e seguir, ou apagar a linha). O mesmo erro faz o perdedor de dois `complete` concorrentes receber 500 em vez de 409.
+3. **`failure_reason` vaza a linha de comando do ffprobe/ffmpeg** (`ffmpeg.util.ts`), com a URL presigned interna e o access key id, e a devolve ao dono em `GET /videos/:id/status`. Gravar uma mensagem curta e limpa.
+4. **Vídeo pode ficar em `processing` para sempre:** ffprobe/ffmpeg sem timeout (o pg-boss expira e re-tenta sem passar por `handleFailure`); o `retry_limit` da fila é fixado na criação, mas o worker decide a última tentativa pelo env atual; o comentário de `queue.config.ts` cita uma dead-letter queue que não está configurada.
+5. **`part_size_bytes` sem teto:** acima de 5 GiB o plano gerado é recusado pelo MinIO (`EntityTooLarge`).
+6. **Desvios das rules:** `.catch()` em `videos.service.ts` (`initiateUpload`); `@ApiProperty` manual em DTOs de request que já têm validadores; `MAX_PART_NUMBER` e `PG_UNIQUE_VIOLATION` duplicados fora de `videos.constants.ts`; `ConfigType` importado como valor em `worker.module.ts`; `VideosModule` exporta `VideosService` sem consumidor; `Error` genérico em `videos.service.ts`; o doc do DTO diz que `filename` deriva a chave de storage, mas não é usado.
+7. **Documentação:** `testing-guide-nestjs-project/artifacts/entities.md` ainda diz que o projeto não tem entidades (desatualizado desde a Fase 02). Esta fatia não tem `library-refs.md` porque o `/plan-validate` saiu `clean` na primeira passada (o `/plan-resolve` nunca rodou) e nenhum TD declara `**Libraries:**`.
