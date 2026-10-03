@@ -75,6 +75,9 @@ export const handlers = [
     const filename = typeof body.filename === "string" ? body.filename : "";
     const contentType = typeof body.content_type === "string" ? body.content_type : "";
     const sizeBytes = typeof body.size_bytes === "number" ? body.size_bytes : 0;
+    // Like the real backend: the requested part size wins over the default.
+    const partSizeBytes =
+      typeof body.part_size_bytes === "number" ? body.part_size_bytes : FIXTURE_PART_SIZE_BYTES;
 
     if (!contentType.startsWith("video/")) {
       return HttpResponse.json(
@@ -94,7 +97,8 @@ export const handlers = [
     }
     return HttpResponse.json<InitiateOk>(
       buildInitiateUploadResponse({
-        part_count: Math.max(1, Math.ceil(sizeBytes / FIXTURE_PART_SIZE_BYTES)),
+        part_size_bytes: partSizeBytes,
+        part_count: Math.max(1, Math.ceil(sizeBytes / partSizeBytes)),
       }),
       { status: 201 }
     );

@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 10/17 completed
+**SIs:** 11/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -70,9 +70,15 @@
   - `redirectToPresigned` responde `502 UPSTREAM_CONTRACT` se o upstream devolver 200 sem `url` — o campo é opcional no contrato gerado, e redirecionar para `undefined` seria pior do que falhar explícito. Não é um código do catálogo; é defesa contra drift de contrato.
 
 ### SI-03.11 — Cliente de upload multipart headless com Uppy (Setup)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** no tests (Setup; `npx tsc --noEmit` exit 0, eslint limpo nos arquivos tocados; comportamento verificado em SI-03.12)
+- **Observations:**
+  - **Desvio do snippet — o tamanho de parte passa a ser do cliente.** No `@uppy/aws-s3` 5.1.0 o `MultipartUploader` chama `getChunkSize` no construtor, **antes** de `createMultipartUpload`; e o backend não persiste o tamanho de parte. Então "`getChunkSize` = `part_size_bytes` devolvido pelo `POST`" é impossível na primeira tentativa e irreproduzível na retomada. O uploader envia `part_size_bytes` (campo opcional que o `InitiateUploadDto` já aceita; default 64 MiB = o default do backend) e falha com `UPSTREAM_CONTRACT` se o eco divergir — a igualdade que o plano exige continua valendo, agora garantida e checada.
+  - A retomada é disparada pelo marcador `file.s3Multipart = { key, uploadId }` (conferido em `MultipartUploader.js`/`index.js`): com os dois campos o Uppy chama `listParts` antes de assinar. Como nada devolve o `upload_id` depois de um reload e nenhuma rota BFF o lê, `resume` é `{ publicId, sizeBytes }` (sem `uploadId`) e o marcador leva um placeholder documentado.
+  - Guarda extra na retomada: `listParts` rejeita (`RESUME_PART_MISMATCH`) uma parte armazenada cujo tamanho não bate com o fatiamento atual — sem isso o `complete` costuraria bytes desalinhados num objeto corrompido.
+  - Evento `draft` além de `progress`/`complete`/`error`: é como a tela fica sabendo o `public_id` para gravar `?resume=` (SI-03.15). `destroy()` pausa em vez de cancelar, para não abortar o multipart (que perderia a retomada) ao desmontar.
+  - `mocks/handlers/videos.ts` (SI-03.5): o fake do `POST /videos` passou a ecoar o `part_size_bytes` pedido, como o backend real (`dto.part_size_bytes ?? DEFAULT`); antes devolvia sempre 5 MiB.
+  - O AC de build fica coberto quando a tela importar o uploader (SI-03.15) e na verificação final — até lá nenhum módulo do app o importa.
 
 ### SI-03.12 — Cliente de upload multipart headless com Uppy (Verification)
 - **Status:** pending
