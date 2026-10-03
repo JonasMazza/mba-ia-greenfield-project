@@ -65,5 +65,6 @@ This module is responsible for registering `JwtAuthGuard` as `APP_GUARD`. The de
 
 ## Rate Limiting
 
-- Rate limits on auth endpoints are enforced by the global `ThrottlerGuard`.
-- E2E tests for non-throttled endpoints must clear the throttler storage in `beforeEach` to avoid leaking 429s across describe blocks. See `.claude/rules/nestjs-testing.md` for the override pattern.
+- Rate limits apply to the auth endpoints only: `ThrottlerGuard` is bound with `@UseGuards` on `AuthController` — never as `APP_GUARD` — and `ThrottlerModule.forRoot` lives in `AuthModule`. Other controllers (e.g. videos, which sign upload parts one request at a time) must not share this budget.
+- The limit is counted per browser: the BFF forwards the browser's address in `X-Forwarded-For`, and the API trusts that hop through `TRUST_PROXY` (Express `trust proxy`, parsed in `src/config/app.config.ts`).
+- E2E tests that exercise the auth endpoints must clear the throttler storage in `beforeEach` to avoid leaking 429s across describe blocks. See `.claude/rules/nestjs-testing.md` for the override pattern.
