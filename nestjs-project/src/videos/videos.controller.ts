@@ -181,7 +181,8 @@ export class VideosController {
   })
   @ApiResponse({
     status: 409,
-    description: 'The video has no active multipart upload',
+    description:
+      'The video has no active multipart upload (`INVALID_UPLOAD_STATE`), or the storage no longer holds it (`UPLOAD_EXPIRED`)',
     schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
   })
   async listUploadedParts(
@@ -228,7 +229,7 @@ export class VideosController {
   @ApiResponse({
     status: 409,
     description:
-      'The video has no active multipart upload (`INVALID_UPLOAD_STATE`), or the stored parts do not add up to the declared `size_bytes` (`UPLOAD_SIZE_MISMATCH`)',
+      'The video has no active multipart upload (`INVALID_UPLOAD_STATE`), the stored parts do not add up to the declared `size_bytes` (`UPLOAD_SIZE_MISMATCH`), or the storage no longer holds the upload and no object was produced from it (`UPLOAD_EXPIRED` — abort and start over)',
     schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
   })
   async completeUpload(

@@ -914,7 +914,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorEnvelope"];
                 };
             };
-            /** @description The video has no active multipart upload */
+            /** @description The video has no active multipart upload (`INVALID_UPLOAD_STATE`), or the storage no longer holds it (`UPLOAD_EXPIRED`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1050,7 +1050,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiErrorEnvelope"];
                 };
             };
-            /** @description The video has no active multipart upload (`INVALID_UPLOAD_STATE`), or the stored parts do not add up to the declared `size_bytes` (`UPLOAD_SIZE_MISMATCH`) */
+            /** @description The video has no active multipart upload (`INVALID_UPLOAD_STATE`), the stored parts do not add up to the declared `size_bytes` (`UPLOAD_SIZE_MISMATCH`), or the storage no longer holds the upload and no object was produced from it (`UPLOAD_EXPIRED` — abort and start over) */
             409: {
                 headers: {
                     [name: string]: unknown;
