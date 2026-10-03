@@ -1,5 +1,8 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigType } from '@nestjs/config';
+import { Inject, Module, OnModuleInit } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import type { ConfigType } from '@nestjs/config';
+import { HttpAdapterHost } from '@nestjs/core';
+import type { Express } from 'express';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -50,4 +53,20 @@ import { VideosModule } from './videos/videos.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements OnModuleInit {
+  constructor(
+    private readonly adapterHost: HttpAdapterHost,
+    @Inject(appConfig.KEY)
+    private readonly app: ConfigType<typeof appConfig>,
+  ) {}
+
+  /**
+   * Browser traffic arrives through the BFF, which forwards the client address
+   * in `X-Forwarded-For`; trusting that hop makes `req.ip` — and so the
+   * throttler's tracker — the real client instead of the BFF.
+   */
+  onModuleInit(): void {
+    const instance = this.adapterHost.httpAdapter?.getInstance<Express>();
+    instance?.set('trust proxy', this.app.trustProxy);
+  }
+}

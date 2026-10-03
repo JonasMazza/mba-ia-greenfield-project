@@ -3,7 +3,10 @@ import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import storageConfig from '../../config/storage.config';
-import { ObjectStorageService } from './object-storage.service';
+import {
+  MultipartUploadNotFoundError,
+  ObjectStorageService,
+} from './object-storage.service';
 
 const FIVE_MIB = 5 * 1024 * 1024;
 
@@ -280,6 +283,33 @@ describe('ObjectStorageService (integration)', () => {
       service.completeMultipartUpload(key, uploadId, [
         { PartNumber: 1, ETag: etag },
       ]),
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(MultipartUploadNotFoundError);
+    await expect(
+      service.listUploadedParts(key, uploadId),
+    ).rejects.toBeInstanceOf(MultipartUploadNotFoundError);
+  }, 60000);
+
+  it('should report the size of a stored object, null once it is deleted', async () => {
+    const key = newKey();
+    const payload = new Uint8Array(FIVE_MIB).fill(6);
+    const uploadId = await service.createMultipartUpload(key, 'video/mp4');
+    const etag = await uploadPart(key, uploadId, 1, payload);
+    await service.completeMultipartUpload(key, uploadId, [
+      { PartNumber: 1, ETag: etag },
+    ]);
+
+    await expect(service.getObjectSize(service.rawBucket, key)).resolves.toBe(
+      FIVE_MIB,
+    );
+
+    await service.deleteObject(service.rawBucket, key);
+
+    await expect(
+      service.getObjectSize(service.rawBucket, key),
+    ).resolves.toBeNull();
+    // Deleting a missing key is not an error.
+    await expect(
+      service.deleteObject(service.rawBucket, key),
+    ).resolves.toBeUndefined();
   }, 60000);
 });

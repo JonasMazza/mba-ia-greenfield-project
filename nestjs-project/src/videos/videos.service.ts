@@ -9,6 +9,7 @@ import { PresignPartsDto } from './dto/presign-parts.dto';
 import { Video, VideoStatus } from './entities/video.entity';
 import { QueueService } from './queue/queue.service';
 import {
+  MultipartUploadNotFoundError,
   ObjectStorageService,
   UploadedPart,
 } from './storage/object-storage.service';
@@ -22,6 +23,7 @@ import {
   FileTooLargeException,
   InvalidUploadStateException,
   UnsupportedMediaTypeException,
+  UploadExpiredException,
   UploadSizeMismatchException,
   VideoNotFoundException,
   VideoNotReadyException,
@@ -273,9 +275,16 @@ export class VideosService {
     const video = await this.getOwnedVideo(userId, publicId);
     const { storageKey, uploadId } = requireActiveUpload(video);
 
-    return {
-      parts: await this.objectStorage.listUploadedParts(storageKey, uploadId),
-    };
+    try {
+      return {
+        parts: await this.objectStorage.listUploadedParts(storageKey, uploadId),
+      };
+    } catch (error) {
+      if (error instanceof MultipartUploadNotFoundError) {
+        throw new UploadExpiredException();
+      }
+      throw error;
+    }
   }
 
   async completeUpload(
@@ -286,20 +295,7 @@ export class VideosService {
     const video = await this.getOwnedVideo(userId, publicId);
     const { storageKey, uploadId } = requireActiveUpload(video);
 
-    requireDeclaredSize(
-      video,
-      dto.parts,
-      await this.objectStorage.listUploadedParts(storageKey, uploadId),
-    );
-
-    await this.objectStorage.completeMultipartUpload(
-      storageKey,
-      uploadId,
-      dto.parts.map((part) => ({
-        PartNumber: part.part_number,
-        ETag: part.etag,
-      })),
-    );
+    await this.stitchUpload(video, storageKey, uploadId, dto.parts);
 
     // Status transition and job creation share a transaction: either the video
     // is processing and the job exists, or neither happened.
@@ -329,7 +325,21 @@ export class VideosService {
     const video = await this.getOwnedVideo(userId, publicId);
     const { storageKey, uploadId } = requireActiveUpload(video);
 
-    await this.objectStorage.abortMultipartUpload(storageKey, uploadId);
+    try {
+      await this.objectStorage.abortMultipartUpload(storageKey, uploadId);
+    } catch (error) {
+      // An upload the storage no longer knows is already what abort asks for.
+      if (!(error instanceof MultipartUploadNotFoundError)) {
+        throw error;
+      }
+    }
+    // A complete whose transaction failed leaves the stitched object behind
+    // while the row stays a draft. Deleting a missing key is a no-op, and MinIO
+    // (unlike S3) does not report an unknown upload on abort, so this always runs.
+    await this.objectStorage.deleteObject(
+      this.objectStorage.rawBucket,
+      storageKey,
+    );
     await this.videoRepository.delete({ id: video.id });
   }
 
@@ -464,6 +474,52 @@ export class VideosService {
       throw new VideoNotReadyException();
     }
     return video;
+  }
+
+  /**
+   * The storage step of `complete` runs before the transaction, so the two can
+   * fall out of step: a previous complete may have stitched the object and then
+   * failed to commit, or a concurrent one may be stitching it right now. Either
+   * way the multipart upload is gone (`NoSuchUpload`) but the object exists,
+   * and the transaction that follows decides who wins. Without the object the
+   * upload simply expired.
+   */
+  private async stitchUpload(
+    video: Video,
+    storageKey: string,
+    uploadId: string,
+    parts: CompleteUploadDto['parts'],
+  ): Promise<void> {
+    try {
+      requireDeclaredSize(
+        video,
+        parts,
+        await this.objectStorage.listUploadedParts(storageKey, uploadId),
+      );
+      await this.objectStorage.completeMultipartUpload(
+        storageKey,
+        uploadId,
+        parts.map((part) => ({
+          PartNumber: part.part_number,
+          ETag: part.etag,
+        })),
+      );
+    } catch (error) {
+      if (!(error instanceof MultipartUploadNotFoundError)) {
+        throw error;
+      }
+      const storedBytes = await this.objectStorage.getObjectSize(
+        this.objectStorage.rawBucket,
+        storageKey,
+      );
+      if (storedBytes === null) {
+        throw new UploadExpiredException();
+      }
+      const declaredBytes = video.size_bytes ?? 0;
+      if (storedBytes !== declaredBytes) {
+        throw new UploadSizeMismatchException(declaredBytes, storedBytes);
+      }
+    }
   }
 
   private async isOwner(video: Video, userId?: string): Promise<boolean> {

@@ -60,3 +60,18 @@ export class UploadSizeMismatchException extends DomainException {
     );
   }
 }
+
+/**
+ * The storage no longer holds the multipart upload (its stale-upload cleanup
+ * ran, or it was aborted) and no object was produced from it: the draft can
+ * only be discarded and the upload started over.
+ */
+export class UploadExpiredException extends DomainException {
+  constructor() {
+    super(
+      'UPLOAD_EXPIRED',
+      409,
+      'The multipart upload no longer exists in the storage; abort it and start a new upload',
+    );
+  }
+}

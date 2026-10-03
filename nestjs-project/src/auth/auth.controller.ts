@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -14,6 +15,7 @@ import {
   ApiTags,
   getSchemaPath,
 } from '@nestjs/swagger';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { AuthService } from './auth.service';
 import type { JwtPayload } from './auth.types';
@@ -28,6 +30,9 @@ import { ResendConfirmationDto } from './dto/resend-confirmation.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @ApiTags('auth')
+// Brute-force guard for the account endpoints only — uploads sign parts one
+// request at a time and must not share this budget.
+@UseGuards(ThrottlerGuard)
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

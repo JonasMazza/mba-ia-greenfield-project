@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 
 import { buttonVariants } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { StreamPlayer } from "@/components/videos/stream-player"
 import { optionalAuthedUpstreamReadOnly } from "@/lib/api/authed"
 import { upstream } from "@/lib/api/upstream"
 
@@ -16,8 +17,9 @@ function formatDuration(totalSeconds: number) {
 /**
  * Throwaway playback surface (TD-07) — Fase 05 replaces it with the watch
  * page. Both media URLs are same-origin and stable: every request to them is
- * answered with a 307 to a freshly signed storage URL (TD-06), so the player
- * never sees an expiry.
+ * answered with a 307 to a freshly signed storage URL (TD-06). Chrome reuses
+ * the redirected URL for later Range requests, so `StreamPlayer` reloads the
+ * same-origin URL when that one expires.
  */
 export default async function VideoPreviewPage({ params }: { params: Params }) {
   const { publicId } = await params
@@ -57,7 +59,7 @@ export default async function VideoPreviewPage({ params }: { params: Params }) {
 
         {video.status === "ready" ? (
           <>
-            <video
+            <StreamPlayer
               controls
               preload="metadata"
               src={streamUrl}

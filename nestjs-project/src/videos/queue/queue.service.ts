@@ -13,6 +13,11 @@ import { VIDEO_QUEUES } from '../videos.constants';
 
 export interface EnsureQueueOptions {
   policy?: PgBoss.QueuePolicy;
+  /**
+   * Queue that receives a copy of every job pg-boss ends as failed: retries
+   * spent, or the last attempt expired. Created on demand.
+   */
+  deadLetter?: string;
 }
 
 export interface EnqueueOptions {
@@ -69,7 +74,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     // Every video.process job is keyed by videoId, so `stately` turns that key
     // into real idempotency: a video already queued or being processed cannot
     // be enqueued twice (TD-01).
-    await this.ensureQueue(VIDEO_QUEUES.PROCESS, { policy: 'stately' });
+    await this.ensureQueue(VIDEO_QUEUES.PROCESS, {
+      policy: 'stately',
+      deadLetter: VIDEO_QUEUES.PROCESS_DEAD_LETTER,
+    });
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -110,12 +118,25 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     if (this.ensuredQueues.has(name)) {
       return;
     }
-    await this.boss.createQueue(name, {
-      policy: options.policy ?? 'standard',
+    const { deadLetter } = options;
+    if (deadLetter) {
+      await this.ensureQueue(deadLetter);
+    }
+
+    const settings = {
       retryLimit: this.config.retryLimit,
       retryDelay: this.config.retryDelaySeconds,
       expireInSeconds: this.config.expireInSeconds,
+      ...(deadLetter && { deadLetter }),
+    };
+    await this.boss.createQueue(name, {
+      policy: options.policy ?? 'standard',
+      ...settings,
     });
+    // createQueue leaves an existing queue as it was created, so a changed
+    // QUEUE_* env would never reach it — while the worker decides the last
+    // attempt from that same env. The policy cannot change after creation.
+    await this.boss.updateQueue(name, settings);
     this.ensuredQueues.add(name);
   }
 

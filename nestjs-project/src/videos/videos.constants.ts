@@ -1,10 +1,15 @@
 /** Queue names owned by the videos module. */
 export const VIDEO_QUEUES = {
   PROCESS: 'video.process',
+  /** Receives every `video.process` job that ended failed in pg-boss (TD-09). */
+  PROCESS_DEAD_LETTER: 'video.process.dead-letter',
 } as const;
 
 /** S3/MinIO multipart floor: every part but the last must be at least 5 MiB. */
 export const MIN_PART_SIZE_BYTES = 5 * 1024 * 1024;
+
+/** S3/MinIO multipart ceiling: a larger part is refused with EntityTooLarge. */
+export const MAX_PART_SIZE_BYTES = 5 * 1024 * 1024 * 1024;
 
 /** S3 caps a ListParts page at 1000 parts (MinIO allows more); always page at the S3 size. */
 export const LIST_PARTS_PAGE_SIZE = 1000;

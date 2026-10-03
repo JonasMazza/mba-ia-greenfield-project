@@ -317,6 +317,27 @@ describe('videos-upload-cycle', () => {
     await expect(countProcessJobs()).resolves.toBe(0);
   }, 60000);
 
+  it('rejects-complete-of-upload-the-storage-dropped', async () => {
+    const initiated = await initiateUpload();
+    const parts = await uploadParts(initiated.public_id);
+    const video = await findVideo(initiated.public_id);
+    // What the storage's own cleanup of stale multipart uploads does.
+    await objectStorage.abortMultipartUpload(
+      video?.storage_key as string,
+      initiated.upload_id,
+    );
+
+    const res = await completeUpload(initiated.public_id, { parts });
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorBody).error).toBe('UPLOAD_EXPIRED');
+
+    // The way out is abort, which must still succeed.
+    const aborted = await abortUpload(initiated.public_id);
+    expect(aborted.status).toBe(204);
+    await expect(findVideo(initiated.public_id)).resolves.toBeNull();
+  }, 60000);
+
   it('rejects-malformed-parts-payload', async () => {
     const initiated = await initiateUpload();
 
