@@ -91,7 +91,7 @@ curl -I http://localhost:3001
 npx playwright test
 
 # Run a specific test file
-npx playwright test tests/smoke.e2e-spec.ts
+npx playwright test tests/auth-login.e2e-spec.ts
 
 # Open the HTML report after a run
 npx playwright show-report
@@ -117,6 +117,7 @@ This project follows a **strict BFF model**: the browser never talks to the Nest
 
 - **From the browser (Client Components):** fetch from same-origin Route Handlers only (e.g., `fetch("/api/videos")`). Direct calls to the NestJS API from the browser are forbidden.
 - **From the server (Route Handlers, RSC, Server Actions):** read the upstream URL from `env.API_URL` (see `lib/env.ts`) and fetch from there. The Route Handler is the only layer that knows the backend address.
+- **Signed-in upstream calls from a Server Component** use `optionalAuthedUpstreamReadOnly` (`lib/api/authed.ts`), never `authedUpstream`/`optionalAuthedUpstream`: those refresh an expired token and save the rotated pair in the session cookie, and Next forbids cookie writes in Server Components. The read-only variant falls back to the anonymous answer on a `401`; the next `/api/**` call refreshes.
 
 #### OpenAPI contract — single source of truth for wire shapes
 
@@ -132,11 +133,11 @@ Source of decisions: `docs/decisions/technical-decisions-next-frontend-openapi-t
 
 - `API_URL` — the upstream NestJS base URL. **Server-only**: validated and exposed via `lib/env.ts` (`@t3-oss/env-nextjs` + Zod 4). Accessing `env.API_URL` from a Client Component throws at runtime. There is **no** client-exposed (`NEXT_PUBLIC_*`) variant for the backend URL, and there must not be one — introducing a public backend URL would defeat the BFF model.
 - `lib/env.ts` is the **source of truth** for environment variable reads in `next-frontend/`.
-- See `.env.example` for the canonical key set and `lib/env.ts` for the `createEnv({ server, client, shared, ... })` schema.
+- `lib/env.ts` holds the canonical key set in its `createEnv({ server, client, shared, ... })` schema. There is no committed `.env.example` (`.gitignore` ignores `.env*`): create `.env.local` with `API_URL` and `SESSION_PASSWORD` (≥ 32 chars) — the dev server does not start without them.
 
 The concrete value of `API_URL` depends on Docker Compose topology (e.g., `http://nestjs-api:3000` on a shared Compose network vs `http://host.docker.internal:3000` from a separate stack). The stacks are currently separate — networking integration is deferred to its own infra task; in the meantime, `.env.local` carries whichever value the local environment can reach.
 
-Media streaming will eventually come from Object Storage (S3/MinIO) — TBD.
+**Video bytes are the one exception to "the browser only talks to `/api/**`" — a partition, not a breach of the BFF.** The control plane (create the draft, sign parts, list/complete/abort the upload, status, playback URLs) goes through `app/api/videos/**`; the bytes go browser ⇄ object storage directly on presigned URLs: part `PUT`s from `lib/videos/uploader.ts` (Uppy headless), and playback/download through `/api/videos/:publicId/stream|download`, which answer `307` to a freshly signed storage URL. The browser never learns `API_URL` nor a storage credential.
 
 Refer to the C4 container diagram at `docs/diagrams/software-arch.mermaid` for the full system view.
 
@@ -202,6 +203,7 @@ npx playwright test tests/xxxx.e2e-spec.ts
 - Step 2 must use `MSW_ENABLED=true` — without it `instrumentation.ts` skips MSW and upstream calls will fail or hit the real NestJS API.
 - Never add `webServer` to `playwright.config.ts` — Playwright must not manage the dev server process (it runs inside Docker, not on the host).
 - If the dev server is already running from a previous session, skip steps 2–3 and go straight to step 4.
+- **Restart the dev server after editing server-side code and before running Playwright.** Next 16's Turbopack hot reloader calls `resetFetch()` whenever server files change, restoring the `fetch` captured before `instrumentation.ts` installed MSW — from then on every upstream call goes to the real network (even `/api/auth/login`). `docker compose restart next-frontend`, then step 2 again.
 
 ### MSW + Vitest — wired
 
@@ -224,6 +226,7 @@ Real browser → real Next.js (RSC, layouts, real `/api/**` Route Handlers serve
 - E2E specs **MUST NOT** reach a real NestJS API — upstream is always the server-side `mocks/` MSW.
 - Upstream handlers are **shared** with Vitest — no E2E-only fork; per-scenario deviation is a reserved trigger fixture branch, not a runtime override. Trigger values must not collide with Vitest fixture values.
 - `onUnhandledRequest`: `"error"` in Vitest, **`"bypass"`** in instrumentation — never copy `"error"` into `instrumentation.ts`.
+- The object-storage origin (`STORAGE_ORIGIN`, `mocks/storage-origin.ts`) is the only browser request outside `/api/**`. Vitest fakes it with `mocks/handlers/storage.ts`; Playwright stubs **that origin only** with `tests/storage-stub.ts`. The real MinIO path is covered by the manual smoke (`docs/phases/phase-03-videos-frontend/smoke-checklist.md`).
 
 ## Stack Summary
 
@@ -244,13 +247,14 @@ next-frontend/
 │   └── <feature>/__tests__/          # Component unit/integration tests (*.test.ts | *.integration.test.ts)
 ├── lib/
 │   ├── utils.ts                      # `cn(...)` helper (clsx + extended tailwind-merge)
-│   └── __tests__/                    # Utils tests (*.test.ts)
+│   ├── api/ auth/ videos/            # BFF helpers, session, uploader
+│   └── <area>/__tests__/             # Tests next to each area (*.test.ts | *.integration.test.ts)
 ├── mocks/                            # MSW handlers + server (msw/node) — loaded by Vitest setupFiles AND instrumentation.ts
 ├── tests/                            # Playwright e2e (*.e2e-spec.ts) — real /api/** run; upstream NestJS faked server-side
 └── components.json                   # shadcn config (do not edit by hand)
 ```
 
-Path aliases live in `tsconfig.json` and `components.json` — `@/components`, `@/components/ui`, `@/components/icons`, `@/lib`, `@/lib/utils`, `@/hooks` (create when first hook is added).
+Path aliases live in `tsconfig.json` and `components.json` — `@/components`, `@/components/ui`, `@/components/icons`, `@/lib`, `@/lib/utils`, `@/hooks`.
 
 ## Design Tokens — Source of Truth
 

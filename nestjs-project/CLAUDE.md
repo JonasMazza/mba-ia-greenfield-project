@@ -13,6 +13,7 @@ docker compose ps   # all services must show status "running"
 Then verify each infrastructure service is actually ready to accept connections — not just running:
 
 - **PostgreSQL:** `docker compose exec db pg_isready -U streamtube` — expect `accepting connections`
+- **MinIO:** `docker compose ps minio` — expect `healthy` (its healthcheck runs `mc ready local`); `minio-bootstrap` must have exited `0` (it creates the buckets)
 
 Only start the NestJS dev server (`npm run start:dev`) when the user **explicitly** asks to run the application — never as part of "start the environment".
 
@@ -33,7 +34,10 @@ docker compose exec nestjs-api npm run start:dev
 
 Services:
 - `nestjs-api` — NestJS API, port `3000`
-- `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube` (also hosts the pg-boss queue, schema `pgboss`)
+- `mailpit` — SMTP capture, SMTP `1025`, UI `8025`
+- `minio` — object storage, S3 API `9000`, console `9001`; `minio-bootstrap` is a one-shot that creates the buckets
+- `video-worker` — consumes `video.process` (built from `Dockerfile.worker`, with FFmpeg); reads `src/` only at boot, so `docker compose restart video-worker` after backend changes
 
 All verification and teardown commands run on the **host machine**:
 
@@ -119,7 +123,7 @@ Conventions for **how to write** each kind of test (mocking patterns, AAA struct
 
 These settings are required in `package.json` (jest config) and `test/jest-e2e.json` for the project's tests to work correctly:
 
-- `setupFiles: ["dotenv/config"]` — without this, `.env` is not loaded inside the Jest process. `DB_HOST`, `JWT_SECRET`, etc. fall back to undefined or to the host's `localhost`, breaking container-to-container DNS.
+- `setupFiles: ["dotenv/config", <jest-env>]` — without `dotenv/config`, `.env` is not loaded inside the Jest process. `DB_HOST`, `JWT_SECRET`, etc. fall back to undefined or to the host's `localhost`, breaking container-to-container DNS. The second entry is `src/test/jest-env.ts`, which pins `STORAGE_PUBLIC_ENDPOINT` to the internal MinIO host (the host-published port is unreachable from inside the container).
 - `testRegex: '.*\\.(spec|integration-spec)\\.ts$'` — covers both unit (`*.spec.ts`) and integration (`*.integration-spec.ts`) suffixes.
 
 Do not add new test-file suffixes; if a new test type is needed, update the regex deliberately.
@@ -148,6 +152,17 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 
 - Each domain feature gets its own module (e.g., `UsersModule`, `VideosModule`) registered in `AppModule`
 - Controllers handle HTTP routing; Services hold business logic; both are scoped to their module
+
+## Videos (Fase 03)
+
+Upload, processing and playback of videos. Bytes never traverse Node: the API only issues presigned URLs, and the browser talks to object storage directly.
+
+- **`src/videos/`** — `VideosController` (`POST /videos`, `POST|GET /videos/:publicId/upload/parts`, `POST /videos/:publicId/upload/complete`, `DELETE /videos/:publicId/upload`, `GET /videos/:publicId/status`, `GET /videos/:publicId`, `GET /videos/:publicId/stream`, `GET /videos/:publicId/download`), `VideosService`, the `Video` entity (`video_status` enum: `draft → processing → ready | failed`), `storage/ObjectStorageService` (S3 client for MinIO) and `queue/QueueService` (pg-boss). Ownership is decided by the channel; a non-owner gets `404`, never `403`.
+- **Upload protocol** — `POST /videos` creates the `draft` row and opens an S3 multipart upload (≤ 10 GiB, part size from the request or 64 MiB by default); the client asks for presigned part URLs on demand, `PUT`s each part to storage, and completes with the `{ part_number, etag }` list, which enqueues `video.process`. `GET …/upload/parts` lists the parts already stored so a client can resume after a reload.
+- **Presign audiences** — every presign names who will use the URL: `'browser'` URLs are signed for `STORAGE_PUBLIC_ENDPOINT` (a host the browser resolves, e.g. `http://localhost:9000`), `'server'` URLs for `STORAGE_ENDPOINT` (the Compose service name, `http://minio:9000`). SigV4 signs the host, so a URL cannot be rewritten afterwards. In tests `src/test/jest-env.ts` pins the public endpoint to the internal one, because the published host is unreachable from inside Docker.
+- **Worker** — the `video-worker` service runs `src/worker/main.ts` (`ts-node`, its own image with FFmpeg). `VideoProcessorService` consumes `video.process`, probes the source with `ffprobe` over a server-audience presigned URL, writes a thumbnail to the processed bucket and moves the video to `ready` or `failed` (`failure_reason`). It reads the code only at startup: **`docker compose restart video-worker` after changing backend code.**
+- **Storage** — MinIO (`minio` service, ports 9000/9001) with the private buckets `streamtube-raw` and `streamtube-processed`, created by the one-shot `minio-bootstrap` service. CORS is server-wide (`MINIO_API_CORS_ALLOW_ORIGIN`) and must let the browser read the `ETag` of a part `PUT`.
+- **Config** — `src/config/storage.config.ts` (`STORAGE_*`, including the upload and playback URL TTLs) and `src/config/queue.config.ts` (`QUEUE_*`); both validated in `src/config/env.validation.ts`.
 
 ## Code Conventions
 
