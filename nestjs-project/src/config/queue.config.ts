@@ -18,13 +18,21 @@ export default registerAs('queue', () => {
       password,
     )}@${host}:${port}/${database}`,
     schema: process.env.QUEUE_SCHEMA || 'pgboss',
-    /** Bounded retries before the job lands in the dead-letter queue (TD-09). */
+    /**
+     * Bounded retries (TD-09). The worker fails the video on its last attempt;
+     * a job that ends failed in pg-boss anyway (expired, worker gone) lands in
+     * `video.process.dead-letter`, whose consumer fails the video.
+     */
     retryLimit: parseInt(process.env.QUEUE_RETRY_LIMIT || '3', 10),
     retryDelaySeconds: parseInt(
       process.env.QUEUE_RETRY_DELAY_SECONDS || '30',
       10,
     ),
-    /** FFmpeg on a 10 GB input can run long — well past pg-boss's 15 min default. */
+    /**
+     * FFmpeg on a 10 GB input can run long — well past pg-boss's 15 min
+     * default. The worker kills FFmpeg before this, so a hung read fails the
+     * attempt instead of expiring the job behind the worker's back.
+     */
     expireInSeconds: parseInt(
       process.env.QUEUE_EXPIRE_IN_SECONDS || '3600',
       10,

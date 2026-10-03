@@ -1,6 +1,8 @@
 /** Queue names owned by the videos module. */
 export const VIDEO_QUEUES = {
   PROCESS: 'video.process',
+  /** Receives every `video.process` job that ended failed in pg-boss (TD-09). */
+  PROCESS_DEAD_LETTER: 'video.process.dead-letter',
 } as const;
 
 /** S3/MinIO multipart floor: every part but the last must be at least 5 MiB. */

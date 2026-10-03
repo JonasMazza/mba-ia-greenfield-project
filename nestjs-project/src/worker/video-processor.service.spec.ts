@@ -48,7 +48,10 @@ describe('VideoProcessorService', () => {
           },
         },
         { provide: QueueService, useValue: {} },
-        { provide: queueConfig.KEY, useValue: { retryLimit: RETRY_LIMIT } },
+        {
+          provide: queueConfig.KEY,
+          useValue: { retryLimit: RETRY_LIMIT, expireInSeconds: 3600 },
+        },
       ],
     }).compile();
 
@@ -74,6 +77,20 @@ describe('VideoProcessorService', () => {
           status: VideoStatus.FAILED,
           failure_reason: 'Unexpected error while processing the video',
         }),
+      );
+    });
+  });
+
+  describe('processing deadline', () => {
+    it('should bound the media tools by a signal that fires before the job expires', async () => {
+      videoRepository.findOneBy.mockResolvedValue(makeVideo(0));
+      jest.mocked(probeVideo).mockRejectedValue(new Error('stop here'));
+
+      await expect(processor.process('video-id')).rejects.toThrow('stop here');
+
+      expect(probeVideo).toHaveBeenCalledWith(
+        'http://minio:9000/streamtube-raw/signed',
+        expect.any(AbortSignal),
       );
     });
   });
