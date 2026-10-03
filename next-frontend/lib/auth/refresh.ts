@@ -1,3 +1,4 @@
+import { forwardedFor } from "@/lib/api/client-ip";
 import { env } from "@/lib/env";
 
 import { destroySession, getSession, setSession } from "./session";
@@ -6,10 +7,14 @@ let refreshPromise: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
   const session = await getSession();
+  const clientIp = await forwardedFor();
 
   const res = await fetch(`${env.API_URL}/auth/refresh`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(clientIp && { "X-Forwarded-For": clientIp }),
+    },
     body: JSON.stringify({ refresh_token: session.refreshToken }),
   });
 

@@ -238,6 +238,11 @@ _Subprojects in scope:_
 
 **Decision:** A (@nestjs/throttler)
 
+**Revision (2026-10-03) — scoped to the auth controller, keyed by the browser's address.** Two premises of the recommendation did not hold once the frontend's BFF went live:
+
+- **"Scoping to `AuthModule` via module-level `APP_GUARD`"** is not how Nest works: an `APP_GUARD` is global whatever module declares it. The 10 req/min budget applied to every route, including the video upload, which signs parts one request at a time (Phase 03, TD-03) — measured: a second user got `429` on their third presign because the first had spent eight. The guard is now bound with `@UseGuards(ThrottlerGuard)` on `AuthController` only.
+- **"Per IP"** meant per BFF: every browser request reaches the API from the BFF's address, so all users shared one budget (eleven logins a minute, from anyone, locked everyone out). The BFF now forwards the browser's address in `X-Forwarded-For` (`next-frontend/lib/api/client-ip.ts`, on every upstream call and on the token refresh), and the API sets Express `trust proxy` from `TRUST_PROXY`, so `req.ip` — the throttler's default tracker — is that address. `req.ips[0]`, as the Nest docs suggest, is not used: it is the left-most entry, which the caller writes. `TRUST_PROXY` is a hop count or the BFF's address/subnet; unset trusts nobody (the old behaviour). `1` is right only while the API is reachable solely through the BFF.
+
 ---
 
 ## TD-09: Refresh Token Format
