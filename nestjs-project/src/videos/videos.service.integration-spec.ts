@@ -23,6 +23,7 @@ import {
   FileTooLargeException,
   InvalidUploadStateException,
   UnsupportedMediaTypeException,
+  UploadExpiredException,
   UploadSizeMismatchException,
   VideoNotFoundException,
   VideoNotReadyException,
@@ -389,6 +390,139 @@ describe('VideosService (integration)', () => {
       [VIDEO_QUEUES.PROCESS],
     );
     expect(jobs).toHaveLength(0);
+  }, 60000);
+
+  // --- Storage and database out of step (NoSuchUpload) ---
+
+  /** A `complete` whose storage step went through but whose transaction did not. */
+  async function stitchWithoutCommitting(
+    userId: string,
+    publicId: string,
+    part: { part_number: number; etag: string },
+  ): Promise<void> {
+    jest
+      .spyOn(queueService, 'enqueue')
+      .mockRejectedValueOnce(new Error('queue exploded'));
+    await expect(
+      service.completeUpload(userId, publicId, { parts: [part] }),
+    ).rejects.toThrow('queue exploded');
+  }
+
+  it('should finish a complete whose transaction failed after the storage stitched the object', async () => {
+    const { userId } = await createUserWithChannel();
+    const initiated = await service.initiateUpload(userId, onePartDto);
+    const part = await uploadOnePart(userId, initiated.public_id);
+    await stitchWithoutCommitting(userId, initiated.public_id, part);
+
+    // The multipart upload no longer exists, but the object it produced does.
+    const result = await service.completeUpload(userId, initiated.public_id, {
+      parts: [part],
+    });
+
+    expect(result.status).toBe(VideoStatus.PROCESSING);
+    const video = await videoRepository.findOneByOrFail({
+      public_id: initiated.public_id,
+    });
+    expect(video.status).toBe(VideoStatus.PROCESSING);
+    expect(video.upload_id).toBeNull();
+    const jobs = await dataSource.query<unknown[]>(
+      `SELECT id FROM pgboss.job WHERE name = $1`,
+      [VIDEO_QUEUES.PROCESS],
+    );
+    expect(jobs).toHaveLength(1);
+  }, 60000);
+
+  it('should answer the loser of two concurrent completes with INVALID_UPLOAD_STATE', async () => {
+    const { userId } = await createUserWithChannel();
+    const initiated = await service.initiateUpload(userId, onePartDto);
+    const part = await uploadOnePart(userId, initiated.public_id);
+
+    const results = await Promise.allSettled([
+      service.completeUpload(userId, initiated.public_id, { parts: [part] }),
+      service.completeUpload(userId, initiated.public_id, { parts: [part] }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter(
+      (r): r is PromiseRejectedResult => r.status === 'rejected',
+    );
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toBeInstanceOf(InvalidUploadStateException);
+    const jobs = await dataSource.query<unknown[]>(
+      `SELECT id FROM pgboss.job WHERE name = $1`,
+      [VIDEO_QUEUES.PROCESS],
+    );
+    expect(jobs).toHaveLength(1);
+  }, 60000);
+
+  it('should report UPLOAD_EXPIRED when the storage dropped the upload and holds no object', async () => {
+    const { userId } = await createUserWithChannel();
+    const initiated = await service.initiateUpload(userId, onePartDto);
+    const part = await uploadOnePart(userId, initiated.public_id);
+    const video = await videoRepository.findOneByOrFail({
+      public_id: initiated.public_id,
+    });
+    // What the storage's own cleanup of stale multipart uploads does.
+    await objectStorage.abortMultipartUpload(
+      video.storage_key as string,
+      initiated.upload_id,
+    );
+
+    await expect(
+      service.completeUpload(userId, initiated.public_id, { parts: [part] }),
+    ).rejects.toBeInstanceOf(UploadExpiredException);
+    await expect(
+      service.listUploadedParts(userId, initiated.public_id),
+    ).rejects.toBeInstanceOf(UploadExpiredException);
+    const draft = await videoRepository.findOneByOrFail({ id: video.id });
+    expect(draft.status).toBe(VideoStatus.DRAFT);
+  }, 60000);
+
+  it('should discard a draft whose upload the storage already dropped', async () => {
+    const { userId } = await createUserWithChannel();
+    const initiated = await service.initiateUpload(userId, onePartDto);
+    const video = await videoRepository.findOneByOrFail({
+      public_id: initiated.public_id,
+    });
+    await objectStorage.abortMultipartUpload(
+      video.storage_key as string,
+      initiated.upload_id,
+    );
+
+    await service.abortUpload(userId, initiated.public_id);
+
+    await expect(
+      videoRepository.findOneBy({ id: video.id }),
+    ).resolves.toBeNull();
+  }, 30000);
+
+  it('should delete the stitched object when aborting a draft whose complete never committed', async () => {
+    const { userId } = await createUserWithChannel();
+    const initiated = await service.initiateUpload(userId, onePartDto);
+    const part = await uploadOnePart(userId, initiated.public_id);
+    const video = await videoRepository.findOneByOrFail({
+      public_id: initiated.public_id,
+    });
+    await stitchWithoutCommitting(userId, initiated.public_id, part);
+    await expect(
+      objectStorage.getObjectSize(
+        objectStorage.rawBucket,
+        video.storage_key as string,
+      ),
+    ).resolves.toBe(FIVE_MIB);
+
+    await service.abortUpload(userId, initiated.public_id);
+
+    await expect(
+      videoRepository.findOneBy({ id: video.id }),
+    ).resolves.toBeNull();
+    await expect(
+      objectStorage.getObjectSize(
+        objectStorage.rawBucket,
+        video.storage_key as string,
+      ),
+    ).resolves.toBeNull();
   }, 60000);
 
   it('should reject a second complete on an upload already finalized', async () => {

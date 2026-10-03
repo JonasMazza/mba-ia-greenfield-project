@@ -2,7 +2,9 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListPartsCommand,
   PutObjectCommand,
   S3Client,
@@ -24,6 +26,33 @@ export interface UploadedPart {
   part_number: number;
   etag: string;
   size: number;
+}
+
+/**
+ * The storage no longer knows the multipart upload: it was completed, aborted,
+ * or dropped by the storage's own cleanup of stale uploads. Raised in place of
+ * the SDK's `NoSuchUpload` so callers never depend on the AWS SDK.
+ */
+export class MultipartUploadNotFoundError extends Error {
+  constructor(uploadId: string) {
+    super(`Multipart upload "${uploadId}" does not exist in the storage`);
+    this.name = 'MultipartUploadNotFoundError';
+  }
+}
+
+/** S3 and MinIO both answer with this code; only some operations model it as a class. */
+function isNoSuchUpload(error: unknown): boolean {
+  return error instanceof Error && error.name === 'NoSuchUpload';
+}
+
+/** HeadObject has no body, so a missing key surfaces as a bare 404. */
+function isNotFound(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === 'NotFound' ||
+      (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+        ?.httpStatusCode === 404)
+  );
 }
 
 /**
@@ -159,26 +188,45 @@ export class ObjectStorageService implements OnModuleDestroy {
     uploadId: string,
     parts: CompletedPart[],
   ): Promise<void> {
-    await this.client.send(
-      new CompleteMultipartUploadCommand({
-        Bucket: this.rawBucket,
-        Key: key,
-        UploadId: uploadId,
-        MultipartUpload: {
-          Parts: [...parts].sort((a, b) => a.PartNumber - b.PartNumber),
-        },
-      }),
+    await this.forUpload(uploadId, () =>
+      this.client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: this.rawBucket,
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: {
+            Parts: [...parts].sort((a, b) => a.PartNumber - b.PartNumber),
+          },
+        }),
+      ),
     );
   }
 
   async abortMultipartUpload(key: string, uploadId: string): Promise<void> {
-    await this.client.send(
-      new AbortMultipartUploadCommand({
-        Bucket: this.rawBucket,
-        Key: key,
-        UploadId: uploadId,
-      }),
+    await this.forUpload(uploadId, () =>
+      this.client.send(
+        new AbortMultipartUploadCommand({
+          Bucket: this.rawBucket,
+          Key: key,
+          UploadId: uploadId,
+        }),
+      ),
     );
+  }
+
+  /** Runs a request that targets an open multipart upload, translating `NoSuchUpload`. */
+  private async forUpload<T>(
+    uploadId: string,
+    request: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await request();
+    } catch (error) {
+      if (isNoSuchUpload(error)) {
+        throw new MultipartUploadNotFoundError(uploadId);
+      }
+      throw error;
+    }
   }
 
   /**
@@ -195,14 +243,16 @@ export class ObjectStorageService implements OnModuleDestroy {
 
     // A 10 GiB upload at the 5 MiB floor has 2048 parts — more than one page.
     do {
-      const response = await this.client.send(
-        new ListPartsCommand({
-          Bucket: this.rawBucket,
-          Key: key,
-          UploadId: uploadId,
-          MaxParts: LIST_PARTS_PAGE_SIZE,
-          PartNumberMarker: marker,
-        }),
+      const response = await this.forUpload(uploadId, () =>
+        this.client.send(
+          new ListPartsCommand({
+            Bucket: this.rawBucket,
+            Key: key,
+            UploadId: uploadId,
+            MaxParts: LIST_PARTS_PAGE_SIZE,
+            PartNumberMarker: marker,
+          }),
+        ),
       );
       for (const part of response.Parts ?? []) {
         if (part.PartNumber !== undefined && part.ETag !== undefined) {
@@ -217,6 +267,28 @@ export class ObjectStorageService implements OnModuleDestroy {
     } while (marker !== undefined);
 
     return parts.sort((a, b) => a.part_number - b.part_number);
+  }
+
+  /** Size of a stored object, or `null` when the key does not exist. */
+  async getObjectSize(bucket: string, key: string): Promise<number | null> {
+    try {
+      const response = await this.client.send(
+        new HeadObjectCommand({ Bucket: bucket, Key: key }),
+      );
+      return response.ContentLength ?? 0;
+    } catch (error) {
+      if (isNotFound(error)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /** Idempotent: deleting a key that does not exist succeeds. */
+  async deleteObject(bucket: string, key: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: bucket, Key: key }),
+    );
   }
 
   /** Small worker output (thumbnails) — video bytes never travel through the app. */
