@@ -28,6 +28,14 @@ const SOURCE_URL_TTL_SECONDS = 3600;
 const THUMBNAIL_CONTENT_TYPE = 'image/jpeg';
 /** What the owner sees for a failure whose message was not written for them. */
 const UNEXPECTED_FAILURE_REASON = 'Unexpected error while processing the video';
+const ABANDONED_FAILURE_REASON =
+  'Processing did not finish within the retry budget';
+/**
+ * Share of the job's expiration the media tools may use. The rest covers the
+ * thumbnail upload and the final update, so an attempt always ends (and is
+ * counted) before pg-boss would expire the job and retry it on its own.
+ */
+const PROCESSING_DEADLINE_RATIO = 0.9;
 
 /**
  * `failure_reason` is shown to the owner, so only messages known to be clean
@@ -57,7 +65,13 @@ export class VideoProcessorService implements OnApplicationBootstrap {
       VIDEO_QUEUES.PROCESS,
       (payload) => this.process(payload.videoId),
     );
-    this.logger.log(`Consuming "${VIDEO_QUEUES.PROCESS}"`);
+    await this.queueService.work<VideoProcessPayload>(
+      VIDEO_QUEUES.PROCESS_DEAD_LETTER,
+      (payload) => this.failAbandoned(payload.videoId),
+    );
+    this.logger.log(
+      `Consuming "${VIDEO_QUEUES.PROCESS}" and "${VIDEO_QUEUES.PROCESS_DEAD_LETTER}"`,
+    );
   }
 
   async process(videoId: string): Promise<void> {
@@ -85,6 +99,25 @@ export class VideoProcessorService implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * A dead-lettered job ended failed without the worker deciding so — its last
+   * attempt expired, the worker died mid-job, or the retry budget changed under
+   * it. Only a video still `processing` is failed: a redelivered job that
+   * already made it `ready` must not be undone.
+   */
+  async failAbandoned(videoId: string): Promise<void> {
+    const result = await this.videoRepository.update(
+      { id: videoId, status: VideoStatus.PROCESSING },
+      {
+        status: VideoStatus.FAILED,
+        failure_reason: ABANDONED_FAILURE_REASON,
+      },
+    );
+    if (result.affected) {
+      this.logger.error(`Video ${videoId} failed: its job was dead-lettered`);
+    }
+  }
+
   private async extractAndPersist(
     video: Video,
     storageKey: string,
@@ -96,7 +129,10 @@ export class VideoProcessorService implements OnApplicationBootstrap {
       { audience: 'server', expiresIn: SOURCE_URL_TTL_SECONDS },
     );
 
-    const metadata = await probeVideo(sourceUrl);
+    const deadline = AbortSignal.timeout(
+      this.config.expireInSeconds * PROCESSING_DEADLINE_RATIO * 1000,
+    );
+    const metadata = await probeVideo(sourceUrl, deadline);
     const thumbnailPath = join(tmpdir(), `thumb-${video.id}.jpg`);
 
     try {
@@ -104,6 +140,7 @@ export class VideoProcessorService implements OnApplicationBootstrap {
         sourceUrl,
         thumbnailPath,
         thumbnailSeekSeconds(metadata.duration_seconds),
+        deadline,
       );
       const thumbnailKey = this.objectStorage.buildThumbnailKey(video.id);
       await this.objectStorage.putObject(

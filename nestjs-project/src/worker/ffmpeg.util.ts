@@ -21,26 +21,34 @@ export class MediaToolError extends Error {
 }
 
 interface ExecFileFailure {
+  name?: string;
   code?: number | string;
   signal?: NodeJS.Signals | null;
 }
 
 function describeExit(error: unknown): string {
-  const { code, signal } = (error ?? {}) as ExecFileFailure;
+  const { name, code, signal } = (error ?? {}) as ExecFileFailure;
+  if (name === 'AbortError') return 'timed out';
   if (signal) return `killed by ${signal}`;
   if (typeof code === 'number') return `exit code ${code}`;
   if (code === 'ENOENT') return 'executable not found';
   return 'unknown error';
 }
 
+/**
+ * `signal` bounds the run: an input that stalls mid-read would otherwise keep
+ * the process alive until the queue expires the job.
+ */
 async function runMediaTool(
   file: 'ffprobe' | 'ffmpeg',
   args: string[],
   failure: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   try {
     const { stdout } = await execFileAsync(file, args, {
       maxBuffer: MAX_OUTPUT_BYTES,
+      signal,
     });
     return stdout;
   } catch (error) {
@@ -78,7 +86,10 @@ function toInt(value: string | undefined): number | null {
  * Reads metadata from a local path or a presigned URL. ffprobe range-reads over
  * HTTP, so a 10 GB source is never downloaded whole just to be measured.
  */
-export async function probeVideo(input: string): Promise<VideoMetadata> {
+export async function probeVideo(
+  input: string,
+  signal?: AbortSignal,
+): Promise<VideoMetadata> {
   const stdout = await runMediaTool(
     'ffprobe',
     [
@@ -91,6 +102,7 @@ export async function probeVideo(input: string): Promise<VideoMetadata> {
       input,
     ],
     'ffprobe could not read the source video',
+    signal,
   );
 
   const probe = JSON.parse(stdout) as FfprobeOutput;
@@ -121,6 +133,7 @@ export async function extractThumbnail(
   input: string,
   outputPath: string,
   seekSeconds: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   await runMediaTool(
     'ffmpeg',
@@ -139,5 +152,6 @@ export async function extractThumbnail(
       outputPath,
     ],
     'ffmpeg could not extract a thumbnail',
+    signal,
   );
 }
