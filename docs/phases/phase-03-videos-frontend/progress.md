@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 15/17 completed
+**SIs:** 16/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -113,9 +113,12 @@
   - Ambiente: criado `next-frontend/.env.local` (ignorado pelo git) com `API_URL=http://host.docker.internal:3000` e um `SESSION_PASSWORD` aleatório — o container não tem variáveis no compose e o dev server não sobe sem elas; o mesmo arquivo serve ao smoke do SI-03.17. O Playwright 1.60 do projeto pedia o `chromium_headless_shell-1223`, ausente no cache do host; instalado com `npx playwright install --only-shell chromium`.
 
 ### SI-03.16 — Tela de preview de reprodução e download (`/videos/[publicId]/preview`)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 3 passing (E2E em `tests/videos-preview.e2e-spec.ts`)
+- **Observations:**
+  - **Fragilidade do harness de E2E (pré-existente, não desta fatia):** no Next 16 o hot reloader do Turbopack chama `resetFetch()` sempre que arquivos de servidor mudam, restaurando o `fetch` capturado no boot do router **antes** de o `instrumentation.ts` instalar o MSW. Editar código de servidor com o dev server no ar derruba a interceptação para o processo inteiro (todo upstream passa a ir para a rede real — até o login). Medido: a primeira renderização do RSC novo deu 500 e, a partir dali, `POST /api/auth/login` também. Contorno operacional: **reiniciar o dev server depois de editar arquivos e antes de rodar o Playwright** (`docker compose restart next-frontend` + subir de novo com `MSW_ENABLED=true`). Tornar o harness imune (reinstalar o MSW depois do reset) é tarefa separada.
+  - O spec usa o gatilho `notfound0000` literal: importar `mocks/handlers/videos.ts` no Playwright puxa o `lib/env.ts`, que valida o env de servidor no host e derruba a coleta.
+  - Para o dono, um vídeo ainda não `ready` mostra os metadados com uma mensagem de status em vez do `<video>` (o stream daria `409 VIDEO_NOT_READY`); para qualquer outro a página é o 404.
 
 ### SI-03.17 — Smoke manual contra a stack real (Verification)
 - **Status:** pending
