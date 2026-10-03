@@ -56,7 +56,12 @@ describe('ObjectStorageService (integration)', () => {
     partNumber: number,
     body: Uint8Array<ArrayBuffer>,
   ): Promise<string> {
-    const url = await service.presignUploadPart(key, uploadId, partNumber);
+    const url = await service.presignUploadPart(
+      key,
+      uploadId,
+      partNumber,
+      'server',
+    );
     const response = await fetch(url, {
       method: 'PUT',
       body: new Blob([body]),
@@ -95,7 +100,9 @@ describe('ObjectStorageService (integration)', () => {
       { PartNumber: 1, ETag: etag },
     ]);
 
-    const url = await service.presignGetObject(service.rawBucket, key);
+    const url = await service.presignGetObject(service.rawBucket, key, {
+      audience: 'server',
+    });
     const response = await fetch(url);
 
     expect(response.status).toBe(200);
@@ -125,7 +132,9 @@ describe('ObjectStorageService (integration)', () => {
       { PartNumber: 1, ETag: etag },
     ]);
 
-    const url = await service.presignGetObject(service.rawBucket, key);
+    const url = await service.presignGetObject(service.rawBucket, key, {
+      audience: 'server',
+    });
     const response = await fetch(url, { headers: { Range: 'bytes=0-99' } });
     const body = new Uint8Array(await response.arrayBuffer());
 
@@ -147,6 +156,7 @@ describe('ObjectStorageService (integration)', () => {
     ]);
 
     const url = await service.presignGetObject(service.rawBucket, key, {
+      audience: 'server',
       downloadFilename: 'Vídeo de férias.mp4',
     });
     // The signature covers the HTTP method, so the URL must be used with GET.
@@ -160,6 +170,77 @@ describe('ObjectStorageService (integration)', () => {
     // Non-ASCII survives via the RFC 5987 form without breaking the signature.
     expect(disposition).toContain("filename*=UTF-8''");
   }, 60000);
+
+  describe('presign audiences', () => {
+    const PUBLIC_ENDPOINT = 'http://public.storage.test:9000';
+
+    /** Plain instantiation: the audience split is pure signing, no DI needed. */
+    function serviceWithPublicEndpoint(): ObjectStorageService {
+      return new ObjectStorageService({
+        ...storageConfig(),
+        publicEndpoint: PUBLIC_ENDPOINT,
+      });
+    }
+
+    it('should sign browser-audience URLs for the public endpoint and server-audience URLs for the internal one', async () => {
+      const split = serviceWithPublicEndpoint();
+      const key = split.buildSourceKey(randomUUID());
+      const internalHost = new URL(storageConfig().endpoint).host;
+
+      const browserPart = await split.presignUploadPart(key, 'u', 1, 'browser');
+      const serverPart = await split.presignUploadPart(key, 'u', 1, 'server');
+      const browserGet = await split.presignGetObject(split.rawBucket, key, {
+        audience: 'browser',
+      });
+      const serverGet = await split.presignGetObject(split.rawBucket, key, {
+        audience: 'server',
+      });
+
+      expect(new URL(browserPart).host).toBe('public.storage.test:9000');
+      expect(new URL(browserGet).host).toBe('public.storage.test:9000');
+      expect(new URL(serverPart).host).toBe(internalHost);
+      expect(new URL(serverGet).host).toBe(internalHost);
+      for (const url of [browserPart, serverPart, browserGet, serverGet]) {
+        expect(url).toContain('X-Amz-Signature=');
+        expect(url).toContain('X-Amz-SignedHeaders=host');
+      }
+      // Same object, different signed host → different signature (SigV4 covers `host`).
+      expect(new URL(browserGet).searchParams.get('X-Amz-Signature')).not.toBe(
+        new URL(serverGet).searchParams.get('X-Amz-Signature'),
+      );
+      split.onModuleDestroy();
+    });
+
+    it('should keep the server-audience URL usable against the real storage while the browser one targets a host it never contacts', async () => {
+      const split = serviceWithPublicEndpoint();
+      const key = newKey();
+      const payload = new Uint8Array(FIVE_MIB).fill(4);
+
+      const uploadId = await split.createMultipartUpload(key, 'video/mp4');
+      const serverUrl = await split.presignUploadPart(
+        key,
+        uploadId,
+        1,
+        'server',
+      );
+      const response = await fetch(serverUrl, {
+        method: 'PUT',
+        body: new Blob([payload]),
+      });
+      expect(response.status).toBe(200);
+
+      const browserUrl = await split.presignUploadPart(
+        key,
+        uploadId,
+        1,
+        'browser',
+      );
+      expect(new URL(browserUrl).host).toBe('public.storage.test:9000');
+
+      await split.abortMultipartUpload(key, uploadId);
+      split.onModuleDestroy();
+    }, 60000);
+  });
 
   it('should invalidate the UploadId on abort, making a later complete fail', async () => {
     const key = newKey();

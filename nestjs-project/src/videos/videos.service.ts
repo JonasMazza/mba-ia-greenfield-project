@@ -220,6 +220,7 @@ export class VideosService {
           storageKey,
           uploadId,
           partNumber,
+          'browser',
         ),
       })),
     );
@@ -301,6 +302,7 @@ export class VideosService {
         result.thumbnail_url = await this.objectStorage.presignGetObject(
           this.objectStorage.processedBucket,
           video.thumbnail_key,
+          { audience: 'browser' },
         );
       }
     }
@@ -330,6 +332,7 @@ export class VideosService {
         ? await this.objectStorage.presignGetObject(
             this.objectStorage.processedBucket,
             video.thumbnail_key,
+            { audience: 'browser' },
           )
         : null,
       created_at: video.created_at.toISOString(),
@@ -347,6 +350,7 @@ export class VideosService {
       url: await this.objectStorage.presignGetObject(
         this.objectStorage.rawBucket,
         video.storage_key as string,
+        { audience: 'browser' },
       ),
       expires_in: this.objectStorage.playbackUrlTtlSeconds,
     };
@@ -363,7 +367,7 @@ export class VideosService {
       url: await this.objectStorage.presignGetObject(
         this.objectStorage.rawBucket,
         video.storage_key as string,
-        { downloadFilename: buildDownloadFilename(video) },
+        { audience: 'browser', downloadFilename: buildDownloadFilename(video) },
       ),
       expires_in: this.objectStorage.playbackUrlTtlSeconds,
     };

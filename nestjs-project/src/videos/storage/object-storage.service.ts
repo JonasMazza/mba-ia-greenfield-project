@@ -18,7 +18,18 @@ export interface CompletedPart {
   ETag: string;
 }
 
+/**
+ * Who will open a presigned URL. The two audiences reach the storage through
+ * different hosts, and SigV4 signs the host, so the audience must be chosen at
+ * signing time — it is a required argument, never a default.
+ *
+ * - `browser`: the user's browser (upload parts, playback, download, thumbnails).
+ * - `server`: a process inside the Compose network (the FFmpeg worker).
+ */
+export type PresignAudience = 'browser' | 'server';
+
 export interface PresignGetOptions {
+  audience: PresignAudience;
   expiresIn?: number;
   /** When set, MinIO returns `Content-Disposition: attachment` so the browser saves the file. */
   downloadFilename?: string;
@@ -31,19 +42,31 @@ export interface PresignGetOptions {
  */
 @Injectable()
 export class ObjectStorageService implements OnModuleDestroy {
+  /** Talks to the storage from inside the Compose network — every real request goes through it. */
   private readonly client: S3Client;
+  /**
+   * Never sends a request: it exists only so `getSignedUrl` (a local HMAC
+   * computation) produces URLs whose signed `host` is the one the browser
+   * will actually use.
+   */
+  private readonly publicSigningClient: S3Client;
 
   constructor(
     @Inject(storageConfig.KEY)
     private readonly config: ConfigType<typeof storageConfig>,
   ) {
-    this.client = new S3Client({
-      endpoint: config.endpoint,
-      region: config.region,
-      forcePathStyle: config.forcePathStyle,
+    this.client = this.createClient(config.endpoint);
+    this.publicSigningClient = this.createClient(config.publicEndpoint);
+  }
+
+  private createClient(endpoint: string): S3Client {
+    return new S3Client({
+      endpoint,
+      region: this.config.region,
+      forcePathStyle: this.config.forcePathStyle,
       credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
+        accessKeyId: this.config.accessKeyId,
+        secretAccessKey: this.config.secretAccessKey,
       },
       // The SDK defaults to WHEN_SUPPORTED, which injects `x-amz-checksum-*`
       // into the signature. A browser PUT-ing a presigned part URL never sends
@@ -53,8 +76,13 @@ export class ObjectStorageService implements OnModuleDestroy {
     });
   }
 
+  private signingClientFor(audience: PresignAudience): S3Client {
+    return audience === 'browser' ? this.publicSigningClient : this.client;
+  }
+
   onModuleDestroy(): void {
     this.client.destroy();
+    this.publicSigningClient.destroy();
   }
 
   get rawBucket(): string {
@@ -104,9 +132,10 @@ export class ObjectStorageService implements OnModuleDestroy {
     key: string,
     uploadId: string,
     partNumber: number,
+    audience: PresignAudience,
   ): Promise<string> {
     return getSignedUrl(
-      this.client,
+      this.signingClientFor(audience),
       new UploadPartCommand({
         Bucket: this.rawBucket,
         Key: key,
@@ -178,12 +207,12 @@ export class ObjectStorageService implements OnModuleDestroy {
   async presignGetObject(
     bucket: string,
     key: string,
-    options: PresignGetOptions = {},
+    options: PresignGetOptions,
   ): Promise<string> {
-    const { expiresIn, downloadFilename } = options;
+    const { audience, expiresIn, downloadFilename } = options;
 
     return getSignedUrl(
-      this.client,
+      this.signingClientFor(audience),
       new GetObjectCommand({
         Bucket: bucket,
         Key: key,

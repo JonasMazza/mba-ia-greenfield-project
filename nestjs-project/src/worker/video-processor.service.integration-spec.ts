@@ -150,6 +150,7 @@ describe('VideoProcessorService (integration)', () => {
     const url = await objectStorage.presignGetObject(
       objectStorage.processedBucket,
       processed.thumbnail_key as string,
+      { audience: 'server' },
     );
     const response = await fetch(url);
     expect(response.status).toBe(200);
