@@ -133,3 +133,11 @@ Prioridade dada à robustez do fluxo de upload/processamento. Cada correção en
 
 Verificação de `dev` com os PRs #8–#12: backend 223/223 + E2E 92/92, `tsc` 0.
 
+
+### Rodada de correções (2026-10-03)
+
+| Item | Decisão | Onde |
+|---|---|---|
+| Rate limit contado pela IP do BFF (achado da triagem) | **Corrigido.** Medido antes: com dois usuários na mesma IP, B tomava `429` no 3º presign porque A já tinha gastado 8. O `ThrottlerGuard` saiu do `APP_GUARD` (que no Nest é global) e passou a valer só no `AuthController`, que era a intenção da TD-08. A API configura o `trust proxy` do Express pela env `TRUST_PROXY` (contagem de saltos ou endereço do BFF), e o `req.ip` — tracker do throttler — vira o IP do navegador, que o BFF repassa em `X-Forwarded-For`. Localmente vale `TRUST_PROXY=1`: o Docker Desktop entrega o tráfego da porta publicada com um endereço que não é o do BFF. Revisão registrada na TD-08 da Fase 02. | PR #14 |
+
+Verificação de `dev` com os PRs #14–#21: backend 227/227 + E2E 95/95, `tsc` 0, `npm run lint` sem erros.

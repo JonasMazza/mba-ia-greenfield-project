@@ -178,3 +178,14 @@ Code review de `main...dev` antes de levar a fase para `main`.
 
 Verificação de `dev` com os PRs #8–#12: Vitest 131/131, Playwright 14/14, `tsc` 0, build ok.
 
+
+### Rodada de correções (2026-10-03)
+
+| # | Follow-up | Decisão | Onde |
+|---|---|---|---|
+| — | Rate limit pela IP do BFF (achado da triagem) | **Corrigido.** O BFF repassa o IP do navegador em `X-Forwarded-For` (última entrada, a do salto mais próximo) em toda chamada do `upstream` e no refresh do token (`lib/api/client-ip.ts`); a API conta o limite de auth por esse endereço. Verificado ponta a ponta sem MSW: o cliente A toma `429` na 11ª chamada, e o cliente B continua passando. | PR #14 |
+| 6 | `refreshPromise` global | **Corrigido.** Rotações num mapa com chave = refresh token apresentado: a mesma sessão divide uma chamada, sessões diferentes não esperam umas pelas outras. Quem aguarda grava o par novo no próprio cookie antes de repetir a chamada. Uma rotação bem-sucedida fica disponível por 10 s (a carência da API, que nesse intervalo devolveria o token *revogado*). | PR #16 |
+| 4 | Retomada sem saída | **Corrigido.** Botão "Discard upload" sempre que há rascunho: `DELETE` do upload. `404` conta como descartado; `409 INVALID_UPLOAD_STATE` leva ao status de processamento, porque o upload já tinha sido concluído. `UPLOAD_EXPIRED` e `RESUME_PART_MISMATCH` ganham mensagem própria. | PR #18 |
+| 5 | Instâncias do Uppy nunca destruídas | **Corrigido, com ajuste na sugestão.** `uppy.destroy()` chama `cancelAll()`, e o `@uppy/aws-s3` responde abortando o multipart — a correção sugerida apagaria o rascunho a cada saída da tela. O `destroy()` do uploader libera a instância com o abort desligado; só o "Cancel upload" descarta. | PR #21 |
+
+Verificação de `dev` com os PRs #14–#21: Vitest 149/149, Playwright 15/15, `tsc` 0, lint sem erros, build ok.
