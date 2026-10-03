@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 7/17 completed
+**SIs:** 10/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -53,19 +53,21 @@
   - Em Next 16 os `params` de rota dinâmica são `Promise` — os handlers fazem `await params`, e os testes passam `{ params: Promise.resolve({ publicId }) }`.
 
 ### SI-03.8 — BFF: finalização e abort do upload
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 6 passing (`app/api/videos/[publicId]/upload/complete/__tests__/route.integration.test.ts`, `app/api/videos/[publicId]/upload/__tests__/route.integration.test.ts`)
+- **Observations:**
+  - O mock do cookie de sessão repetido em cada teste de rota foi extraído para `app/api/videos/[publicId]/__tests__/session-harness.ts` (não é um arquivo de teste — o Vitest só coleta `*.test.ts`).
 
 ### SI-03.9 — BFF: status de processamento (polling)
-- **Status:** pending
-- **Tests:** —
+- **Status:** completed
+- **Tests:** 4 passing (`app/api/videos/[publicId]/status/__tests__/route.integration.test.ts`)
 - **Observations:** none
 
 ### SI-03.10 — BFF: metadados públicos e redirect de streaming/download
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 8 passing (`app/api/videos/[publicId]/__tests__/route.integration.test.ts`, `…/stream/__tests__/route.integration.test.ts`, `…/download/__tests__/route.integration.test.ts`)
+- **Observations:**
+  - `redirectToPresigned` responde `502 UPSTREAM_CONTRACT` se o upstream devolver 200 sem `url` — o campo é opcional no contrato gerado, e redirecionar para `undefined` seria pior do que falhar explícito. Não é um código do catálogo; é defesa contra drift de contrato.
 
 ### SI-03.11 — Cliente de upload multipart headless com Uppy (Setup)
 - **Status:** pending
