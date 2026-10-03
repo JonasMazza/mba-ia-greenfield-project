@@ -161,3 +161,20 @@ Code review de `main...dev` antes de levar a fase para `main`.
 7. **CI de frescor do contrato cobre só metade da cadeia:** `openapi-freshness.yml` não roda `openapi:export`, então uma mudança de controller/DTO sem reexportar o spec passa.
 8. **Imports relativos profundos em testes** (`../../__tests__/session-harness`) nos testes de rota de vídeos — a rule de code quality pede `@/`.
 9. **Guia de testes do frontend com caminhos antigos** (herdado): `artifacts/pages.md` cita `app/login/page.tsx` (é `app/(auth)/login/page.tsx`); `artifacts/route-handlers.md` diz que as rotas de auth estão vazias e cita `mocks/factories/auth.ts`, que não existe.
+
+### Triagem dos follow-ups (2026-10-03)
+
+| # | Follow-up | Decisão | Onde |
+|---|---|---|---|
+| 1 | TD-06 não vale no Chrome | **Decidido e corrigido.** A opção C continua como contrato; a B entra como recuperação: `StreamPlayer` recarrega o `src` same-origin em `MEDIA_ERR_NETWORK` e restaura posição e reprodução. Revisão registrada na TD-06. Verificado no Chrome real com TTL de 20 s (o `<video>` puro falha; o `StreamPlayer` volta a tocar 5 s após o erro). Limitação: o Chrome insiste ~30 s antes do erro — ponto para a Fase 05. | PR #11 |
+| 2 | Harness E2E imune ao `resetFetch` | **Adiado** (ergonomia de teste). Contorno documentado no `next-frontend/CLAUDE.md`: reiniciar o dev server antes do Playwright. | — |
+| 3 | E2E `videos-upload` intermitente com dev server frio | **Adiado**, baixa prioridade. Nas execuções desta rodada passou de primeira (14/14, duas vezes). | — |
+| 4 | Retomada sem saída | **Próximo do frontend (alta).** O backend agora devolve `409 UPLOAD_EXPIRED` quando o upload sumiu do storage e o `abort` tolera esse caso (PR #9); falta a tela oferecer "Descartar". | — |
+| 5 | Instâncias do Uppy nunca destruídas | **Próximo do frontend (média).** Correção pequena: `uppy.destroy()` depois de pausar. | — |
+| 6 | `refreshPromise` global | **Próximo do frontend (alta).** Reanalisado: além de compartilhar o refresh entre usuários, a requisição que aguarda repete com o cookie da *própria* requisição (ainda com o token vencido) e recebe 401 — o single-flight não protege nem o mesmo usuário entre requisições. Precisa de chave por sessão **e** de devolver os tokens novos a quem aguarda. Herdado da Fase 02. | — |
+| 7 | CI de frescor cobre só metade da cadeia | **Adiado.** Rodar `openapi:export` no CI exige instalar o backend no job; tarefa própria. | — |
+| 8 | Imports relativos profundos em testes | **Adiado** (cosmético; não misturar com correções). | — |
+| 9 | Guia de testes com caminhos antigos | **Adiado.** Tarefa única de docs com o follow-up 7 do backend. | — |
+
+Verificação de `dev` com os PRs #8–#12: Vitest 131/131, Playwright 14/14, `tsc` 0, build ok.
+
