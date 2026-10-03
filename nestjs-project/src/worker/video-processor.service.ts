@@ -18,6 +18,7 @@ import { VIDEO_QUEUES } from '../videos/videos.constants';
 import type { VideoProcessPayload } from '../videos/videos.service';
 import {
   extractThumbnail,
+  MediaToolError,
   probeVideo,
   thumbnailSeekSeconds,
 } from './ffmpeg.util';
@@ -25,6 +26,18 @@ import {
 /** Long enough for ffmpeg to finish reading a large source through one URL. */
 const SOURCE_URL_TTL_SECONDS = 3600;
 const THUMBNAIL_CONTENT_TYPE = 'image/jpeg';
+/** What the owner sees for a failure whose message was not written for them. */
+const UNEXPECTED_FAILURE_REASON = 'Unexpected error while processing the video';
+
+/**
+ * `failure_reason` is shown to the owner, so only messages known to be clean
+ * reach it; anything else stays in the worker log.
+ */
+function toFailureReason(error: unknown): string {
+  return error instanceof MediaToolError
+    ? error.message
+    : UNEXPECTED_FAILURE_REASON;
+}
 
 @Injectable()
 export class VideoProcessorService implements OnApplicationBootstrap {
@@ -125,7 +138,7 @@ export class VideoProcessorService implements OnApplicationBootstrap {
     const reason = error instanceof Error ? error.message : String(error);
 
     if (attempts >= this.config.retryLimit) {
-      await this.markFailed(video, reason, attempts);
+      await this.markFailed(video, toFailureReason(error), attempts);
       this.logger.error(
         `Video ${video.id} failed after ${attempts} attempts: ${reason}`,
       );

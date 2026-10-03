@@ -199,6 +199,29 @@ describe('VideoProcessorService (integration)', () => {
     expect(failed.thumbnail_key).toBeNull();
   }, 120000);
 
+  it('should record a failure reason that does not expose the internal source URL', async () => {
+    const video = await createProcessingVideo(
+      new TextEncoder().encode('still not a video'),
+    );
+
+    await expect(processor.process(video.id)).rejects.toThrow(
+      'ffprobe could not read the source video',
+    );
+    await expect(processor.process(video.id)).rejects.toThrow();
+    await processor.process(video.id);
+
+    // The owner reads this through GET /videos/:id/status: the ffprobe command
+    // line would hand over the presigned URL and the storage access key id.
+    const failed = await videoRepository.findOneByOrFail({ id: video.id });
+    expect(failed.status).toBe(VideoStatus.FAILED);
+    expect(failed.failure_reason).toMatch(
+      /^ffprobe could not read the source video/,
+    );
+    expect(failed.failure_reason).not.toMatch(/https?:\/\//);
+    expect(failed.failure_reason).not.toContain('X-Amz');
+    expect(failed.failure_reason).not.toContain(video.storage_key as string);
+  }, 120000);
+
   it('should fail a video that has no source object key', async () => {
     const video = await videoRepository.save(
       videoRepository.create({
