@@ -391,7 +391,7 @@ export interface components {
              */
             size_bytes: number;
             /**
-             * @description Desired part size in bytes; at least 5242880 (5 MiB), the S3 minimum for every part but the last
+             * @description Desired part size in bytes; between 5242880 (5 MiB, the S3 minimum for every part but the last) and 5368709120 (5 GiB, the S3 maximum for any part)
              * @example 67108864
              */
             part_size_bytes?: number;

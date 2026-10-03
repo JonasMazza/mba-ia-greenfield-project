@@ -1,6 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
-import { MIN_PART_SIZE_BYTES } from '../videos.constants';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
+import { MAX_PART_SIZE_BYTES, MIN_PART_SIZE_BYTES } from '../videos.constants';
 
 /**
  * Note on what is *not* validated here: the `video/*` rule and the 10 GiB
@@ -34,12 +41,14 @@ export class InitiateUploadDto {
   size_bytes: number;
 
   @ApiPropertyOptional({
-    description: `Desired part size in bytes; at least ${MIN_PART_SIZE_BYTES} (5 MiB), the S3 minimum for every part but the last`,
+    description: `Desired part size in bytes; between ${MIN_PART_SIZE_BYTES} (5 MiB, the S3 minimum for every part but the last) and ${MAX_PART_SIZE_BYTES} (5 GiB, the S3 maximum for any part)`,
     example: 67108864,
     minimum: MIN_PART_SIZE_BYTES,
+    maximum: MAX_PART_SIZE_BYTES,
   })
   @IsOptional()
   @IsInt()
   @Min(MIN_PART_SIZE_BYTES)
+  @Max(MAX_PART_SIZE_BYTES)
   part_size_bytes?: number;
 }
