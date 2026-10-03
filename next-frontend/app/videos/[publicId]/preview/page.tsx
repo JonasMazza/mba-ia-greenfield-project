@@ -2,7 +2,7 @@ import { notFound } from "next/navigation"
 
 import { buttonVariants } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { optionalAuthedUpstream } from "@/lib/api/authed"
+import { optionalAuthedUpstreamReadOnly } from "@/lib/api/authed"
 import { upstream } from "@/lib/api/upstream"
 
 type Params = Promise<{ publicId: string }>
@@ -22,7 +22,7 @@ function formatDuration(totalSeconds: number) {
 export default async function VideoPreviewPage({ params }: { params: Params }) {
   const { publicId } = await params
 
-  const { data: video, error, response } = await optionalAuthedUpstream((headers) =>
+  const { data: video, error, response } = await optionalAuthedUpstreamReadOnly((headers) =>
     upstream.GET("/videos/{publicId}", { params: { path: { publicId } }, headers })
   )
   if (response.status === 404) notFound()

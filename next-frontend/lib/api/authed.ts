@@ -62,6 +62,26 @@ export async function optionalAuthedUpstream<T>(
   return callWithBearer(call);
 }
 
+/**
+ * `optionalAuthedUpstream` for Server Components, which cannot write cookies
+ * (Next throws outside a Server Action or Route Handler). The bearer rides
+ * along while it is valid, but it is never refreshed here: the rotated pair
+ * could not be saved, and the next refresh would then present a revoked token
+ * — which the API treats as reuse and answers by revoking the whole session.
+ * An upstream 401 falls back to the anonymous answer; the next `/api/**`
+ * request (a Route Handler) does the refresh.
+ */
+export async function optionalAuthedUpstreamReadOnly<T>(
+  call: UpstreamCall<T>
+): Promise<UpstreamResult<T>> {
+  const session = await getSession();
+  if (!session.isLoggedIn) {
+    return call({});
+  }
+  const result = await call({ Authorization: `Bearer ${session.accessToken}` });
+  return result.response.status === 401 ? call({}) : result;
+}
+
 async function callWithBearer<T>(call: UpstreamCall<T>): Promise<UpstreamResult<T>> {
   let last: UpstreamResult<T> | undefined;
 

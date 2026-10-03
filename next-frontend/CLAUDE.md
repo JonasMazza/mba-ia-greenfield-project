@@ -117,6 +117,7 @@ This project follows a **strict BFF model**: the browser never talks to the Nest
 
 - **From the browser (Client Components):** fetch from same-origin Route Handlers only (e.g., `fetch("/api/videos")`). Direct calls to the NestJS API from the browser are forbidden.
 - **From the server (Route Handlers, RSC, Server Actions):** read the upstream URL from `env.API_URL` (see `lib/env.ts`) and fetch from there. The Route Handler is the only layer that knows the backend address.
+- **Signed-in upstream calls from a Server Component** use `optionalAuthedUpstreamReadOnly` (`lib/api/authed.ts`), never `authedUpstream`/`optionalAuthedUpstream`: those refresh an expired token and save the rotated pair in the session cookie, and Next forbids cookie writes in Server Components. The read-only variant falls back to the anonymous answer on a `401`; the next `/api/**` call refreshes.
 
 #### OpenAPI contract — single source of truth for wire shapes
 
