@@ -91,7 +91,7 @@ curl -I http://localhost:3001
 npx playwright test
 
 # Run a specific test file
-npx playwright test tests/smoke.e2e-spec.ts
+npx playwright test tests/auth-login.e2e-spec.ts
 
 # Open the HTML report after a run
 npx playwright show-report
@@ -132,7 +132,7 @@ Source of decisions: `docs/decisions/technical-decisions-next-frontend-openapi-t
 
 - `API_URL` — the upstream NestJS base URL. **Server-only**: validated and exposed via `lib/env.ts` (`@t3-oss/env-nextjs` + Zod 4). Accessing `env.API_URL` from a Client Component throws at runtime. There is **no** client-exposed (`NEXT_PUBLIC_*`) variant for the backend URL, and there must not be one — introducing a public backend URL would defeat the BFF model.
 - `lib/env.ts` is the **source of truth** for environment variable reads in `next-frontend/`.
-- See `.env.example` for the canonical key set and `lib/env.ts` for the `createEnv({ server, client, shared, ... })` schema.
+- `lib/env.ts` holds the canonical key set in its `createEnv({ server, client, shared, ... })` schema. There is no committed `.env.example` (`.gitignore` ignores `.env*`): create `.env.local` with `API_URL` and `SESSION_PASSWORD` (≥ 32 chars) — the dev server does not start without them.
 
 The concrete value of `API_URL` depends on Docker Compose topology (e.g., `http://nestjs-api:3000` on a shared Compose network vs `http://host.docker.internal:3000` from a separate stack). The stacks are currently separate — networking integration is deferred to its own infra task; in the meantime, `.env.local` carries whichever value the local environment can reach.
 
@@ -246,13 +246,14 @@ next-frontend/
 │   └── <feature>/__tests__/          # Component unit/integration tests (*.test.ts | *.integration.test.ts)
 ├── lib/
 │   ├── utils.ts                      # `cn(...)` helper (clsx + extended tailwind-merge)
-│   └── __tests__/                    # Utils tests (*.test.ts)
+│   ├── api/ auth/ videos/            # BFF helpers, session, uploader
+│   └── <area>/__tests__/             # Tests next to each area (*.test.ts | *.integration.test.ts)
 ├── mocks/                            # MSW handlers + server (msw/node) — loaded by Vitest setupFiles AND instrumentation.ts
 ├── tests/                            # Playwright e2e (*.e2e-spec.ts) — real /api/** run; upstream NestJS faked server-side
 └── components.json                   # shadcn config (do not edit by hand)
 ```
 
-Path aliases live in `tsconfig.json` and `components.json` — `@/components`, `@/components/ui`, `@/components/icons`, `@/lib`, `@/lib/utils`, `@/hooks` (create when first hook is added).
+Path aliases live in `tsconfig.json` and `components.json` — `@/components`, `@/components/ui`, `@/components/icons`, `@/lib`, `@/lib/utils`, `@/hooks`.
 
 ## Design Tokens — Source of Truth
 

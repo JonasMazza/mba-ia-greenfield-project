@@ -20,7 +20,7 @@ Services are the most varied artifact type. The test layer depends on the servic
 | DB access only (no branching) | — | ✅ real DB | No logic to unit-test; the DB contract IS the behavior |
 | Branching + DB access | ✅ mock repo (test branches) | ✅ real DB (test queries) | Unit proves logic; integration proves queries — neither substitutes the other |
 | Configured lib (JWT, cache, throttle) | ✅ real lib with test config | — | Mocking hides config bugs; use real lib with test-safe values |
-| Side-effect dep (email, storage) | — | ✅ real capture service | Mailpit captures SMTP; local filesystem for storage |
+| Side-effect dep (email, storage) | — | ✅ real capture service | Mailpit captures SMTP; MinIO for storage |
 | Branching + side-effect dep | ✅ mock the dep (test branches) | ✅ real capture service | Both layers needed |
 | Pure delegation (no branching, no boundary) | — | — | Skip — no testable behavior |
 
