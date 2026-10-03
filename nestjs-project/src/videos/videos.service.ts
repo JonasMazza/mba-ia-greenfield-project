@@ -8,7 +8,10 @@ import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { PresignPartsDto } from './dto/presign-parts.dto';
 import { Video, VideoStatus } from './entities/video.entity';
 import { QueueService } from './queue/queue.service';
-import { ObjectStorageService } from './storage/object-storage.service';
+import {
+  ObjectStorageService,
+  UploadedPart,
+} from './storage/object-storage.service';
 import { generatePublicId } from './utils/public-id';
 import {
   DEFAULT_PART_SIZE_BYTES,
@@ -47,6 +50,10 @@ export interface PresignPartsResult {
 export interface CompleteUploadResult {
   public_id: string;
   status: VideoStatus;
+}
+
+export interface UploadedPartsResult {
+  parts: UploadedPart[];
 }
 
 export interface VideoProcessPayload {
@@ -226,6 +233,22 @@ export class VideosService {
     );
 
     return { parts, expires_in: this.objectStorage.uploadUrlTtlSeconds };
+  }
+
+  /**
+   * The resume path after a page reload: the storage is the source of truth
+   * for which parts landed (and their ETags), so the client keeps nothing.
+   */
+  async listUploadedParts(
+    userId: string,
+    publicId: string,
+  ): Promise<UploadedPartsResult> {
+    const video = await this.getOwnedVideo(userId, publicId);
+    const { storageKey, uploadId } = requireActiveUpload(video);
+
+    return {
+      parts: await this.objectStorage.listUploadedParts(storageKey, uploadId),
+    };
   }
 
   async completeUpload(

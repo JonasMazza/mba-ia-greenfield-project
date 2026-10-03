@@ -18,6 +18,13 @@ export interface CompletedPart {
   ETag: string;
 }
 
+/** A part the storage already holds — what a resumed upload needs to skip it and to complete later. */
+export interface UploadedPart {
+  part_number: number;
+  etag: string;
+  size: number;
+}
+
 /**
  * Who will open a presigned URL. The two audiences reach the storage through
  * different hosts, and SigV4 signs the host, so the audience must be chosen at
@@ -173,8 +180,15 @@ export class ObjectStorageService implements OnModuleDestroy {
     );
   }
 
-  /** Part numbers already uploaded — lets a resumed upload re-presign only what is missing. */
-  async listUploadedParts(key: string, uploadId: string): Promise<number[]> {
+  /**
+   * Parts already uploaded, with the ETags only the storage knows — lets a
+   * resumed upload re-presign only what is missing and complete without the
+   * browser ever having persisted anything.
+   */
+  async listUploadedParts(
+    key: string,
+    uploadId: string,
+  ): Promise<UploadedPart[]> {
     const response = await this.client.send(
       new ListPartsCommand({
         Bucket: this.rawBucket,
@@ -183,8 +197,18 @@ export class ObjectStorageService implements OnModuleDestroy {
       }),
     );
     return (response.Parts ?? [])
-      .map((part) => part.PartNumber)
-      .filter((partNumber): partNumber is number => partNumber !== undefined);
+      .flatMap((part) =>
+        part.PartNumber !== undefined && part.ETag !== undefined
+          ? [
+              {
+                part_number: part.PartNumber,
+                etag: part.ETag,
+                size: part.Size ?? 0,
+              },
+            ]
+          : [],
+      )
+      .sort((a, b) => a.part_number - b.part_number);
   }
 
   /** Small worker output (thumbnails) — video bytes never travel through the app. */

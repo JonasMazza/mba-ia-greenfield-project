@@ -114,10 +114,11 @@ describe('ObjectStorageService (integration)', () => {
     const payload = new Uint8Array(FIVE_MIB).fill(1);
 
     const uploadId = await service.createMultipartUpload(key, 'video/mp4');
-    await uploadPart(key, uploadId, 1, payload);
+    await expect(service.listUploadedParts(key, uploadId)).resolves.toEqual([]);
+    const etag = await uploadPart(key, uploadId, 1, payload);
 
     await expect(service.listUploadedParts(key, uploadId)).resolves.toEqual([
-      1,
+      { part_number: 1, etag, size: FIVE_MIB },
     ]);
     await service.abortMultipartUpload(key, uploadId);
   }, 60000);

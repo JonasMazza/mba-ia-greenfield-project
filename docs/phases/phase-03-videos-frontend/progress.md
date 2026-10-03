@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 1/17 completed
+**SIs:** 2/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -13,9 +13,11 @@
   - Os 2 erros de lint restantes em `env.validation.integration-spec.ts` são do baseline herdado (teste do `SWAGGER_ENABLED`); o teste novo foi escrito sem `any`.
 
 ### SI-03.2 — Endpoint de partes já enviadas (GET /videos/:publicId/upload/parts)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 41 passing (35 integration em `object-storage.service.integration-spec.ts` + `videos.service.integration-spec.ts`; 6 E2E em `test/videos-uploaded-parts.e2e-spec.ts`, autorado a partir de `specs/videos-uploaded-parts.plan.md`)
+- **Observations:**
+  - `listUploadedParts` do storage passou a devolver `{ part_number, etag, size }` ordenado em vez de só os números; o único consumidor anterior era o próprio spec, então não houve call site a migrar.
+  - O cenário 4.1 do spec lê `openapi.json` do disco e confere `security`, respostas e o schema de `parts` — é o teste que garante que o contrato commitado acompanha a rota (o frontend gera os tipos a partir dele).
 
 ### SI-03.3 — Sincronizar o contrato OpenAPI no frontend e expor os aliases de vídeos
 - **Status:** pending

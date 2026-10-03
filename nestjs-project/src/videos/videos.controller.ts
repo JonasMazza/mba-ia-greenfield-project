@@ -29,6 +29,7 @@ import type {
   PresignPartsResult,
   PresignedUrlResult,
   PublicVideoResult,
+  UploadedPartsResult,
   VideoStatusResult,
 } from './videos.service';
 import { VideosService } from './videos.service';
@@ -139,6 +140,55 @@ export class VideosController {
     @Body() dto: PresignPartsDto,
   ): Promise<PresignPartsResult> {
     return this.videosService.presignParts(user.sub, publicId, dto);
+  }
+
+  @Get(':publicId/upload/parts')
+  @ApiBearerAuth('access-token')
+  @ApiParam({ name: 'publicId', description: 'Public id of the video' })
+  @ApiOperation({
+    summary: 'List the parts already uploaded',
+    description:
+      'Returns the parts the object storage already holds for the active multipart upload, with their ETags. This is the resume path after a page reload: the client signs only the missing parts and completes with server-sourced ETags.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Parts already received by the storage',
+    schema: {
+      properties: {
+        parts: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              part_number: { type: 'integer' },
+              etag: { type: 'string' },
+              size: { type: 'integer' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'No video with this public id belongs to the caller',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'The video has no active multipart upload',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async listUploadedParts(
+    @CurrentUser() user: JwtPayload,
+    @Param('publicId') publicId: string,
+  ): Promise<UploadedPartsResult> {
+    return this.videosService.listUploadedParts(user.sub, publicId);
   }
 
   @Post(':publicId/upload/complete')
