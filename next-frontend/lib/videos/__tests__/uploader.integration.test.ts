@@ -198,6 +198,61 @@ describe("createVideoUploader — multipart over the BFF", () => {
     expect(seen.error).toEqual([]);
   });
 
+  describe("destroy()", () => {
+    /** A part PUT that never answers, so the upload is mid-flight when the test acts. */
+    function hangOnFirstPut() {
+      return new Promise<void>((resolve) => {
+        server.use(
+          http.put(`${STORAGE_ORIGIN}/*`, async () => {
+            resolve();
+            await new Promise<never>(() => {});
+            return new HttpResponse(null, { status: 200 });
+          })
+        );
+      });
+    }
+
+    it("releases the Uppy instance — its window listeners go with it", () => {
+      const removed = vi.spyOn(window, "removeEventListener");
+      const uploader = createVideoUploader({ partSizeBytes: FIXTURE_PART_SIZE_BYTES });
+
+      uploader.destroy();
+
+      expect(removed.mock.calls.map(([type]) => type)).toEqual(
+        expect.arrayContaining(["online", "offline"])
+      );
+      removed.mockRestore();
+    });
+
+    it("mid-upload stops the transfer but leaves the multipart resumable", async () => {
+      const putStarted = hangOnFirstPut();
+      const uploader = createVideoUploader({ partSizeBytes: FIXTURE_PART_SIZE_BYTES });
+
+      uploader.addFile(videoFile(THREE_PART_SIZE));
+      void uploader.upload();
+      await putStarted;
+      uploader.destroy();
+      // Nothing to wait for on success — give a queued abort the chance to show up.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(callsTo("DELETE", "/upload")).toEqual([]);
+      expect(callsTo("POST", "/upload/complete")).toEqual([]);
+    });
+
+    it("right after cancel() still lets the abort through", async () => {
+      const putStarted = hangOnFirstPut();
+      const uploader = createVideoUploader({ partSizeBytes: FIXTURE_PART_SIZE_BYTES });
+
+      uploader.addFile(videoFile(THREE_PART_SIZE));
+      void uploader.upload();
+      await putStarted;
+      uploader.cancel();
+      uploader.destroy();
+
+      await vi.waitFor(() => expect(callsTo("DELETE", "/upload")).toHaveLength(1));
+    });
+  });
+
   it("resumes from listParts: signs and PUTs only the missing parts, completes with all three", async () => {
     const uploader = createVideoUploader({
       partSizeBytes: FIXTURE_PART_SIZE_BYTES,

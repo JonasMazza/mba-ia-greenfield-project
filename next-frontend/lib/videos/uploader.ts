@@ -67,7 +67,7 @@ export type VideoUploader = {
     event: E,
     listener: (payload: VideoUploaderEvents[E]) => void
   ): () => void;
-  /** Stops in-flight requests without aborting the multipart, so it stays resumable. */
+  /** Stops in-flight requests and frees the Uppy instance without aborting the multipart, so it stays resumable. */
   destroy(): void;
 };
 
@@ -126,6 +126,7 @@ export function createVideoUploader(
   let publicId = resume?.publicId ?? null;
   let fileSize = 0;
   let cancelled = false;
+  let released = false;
   const uploadedParts = new Set<number>();
 
   const partCountFor = (size: number) => Math.max(1, Math.ceil(size / partSizeBytes));
@@ -205,6 +206,9 @@ export function createVideoUploader(
   }
 
   async function abortMultipartUpload(_file: VideoFile, { key, signal }: UploadResultWithSignal) {
+    // `uppy.destroy()` cancels every file, and the plugin answers a cancel by
+    // aborting the multipart. Only the user's cancel may discard the draft.
+    if (released && !cancelled) return;
     await bffRequest<null>(uploadPath(key), { method: "DELETE", signal });
   }
 
@@ -305,8 +309,9 @@ export function createVideoUploader(
     },
 
     destroy() {
-      uppy.pauseAll();
+      released = true;
       Object.values(listeners).forEach((set) => set.clear());
+      uppy.destroy();
     },
   };
 }
