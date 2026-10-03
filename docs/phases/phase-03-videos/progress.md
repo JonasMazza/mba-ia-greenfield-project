@@ -116,3 +116,20 @@ Code review de `main...dev` antes de levar a fase para `main`.
 5. **`part_size_bytes` sem teto:** acima de 5 GiB o plano gerado é recusado pelo MinIO (`EntityTooLarge`).
 6. **Desvios das rules:** `.catch()` em `videos.service.ts` (`initiateUpload`); `@ApiProperty` manual em DTOs de request que já têm validadores; `MAX_PART_NUMBER` e `PG_UNIQUE_VIOLATION` duplicados fora de `videos.constants.ts`; `ConfigType` importado como valor em `worker.module.ts`; `VideosModule` exporta `VideosService` sem consumidor; `Error` genérico em `videos.service.ts`; o doc do DTO diz que `filename` deriva a chave de storage, mas não é usado.
 7. **Documentação:** `testing-guide-nestjs-project/artifacts/entities.md` ainda diz que o projeto não tem entidades (desatualizado desde a Fase 02). Esta fatia não tem `library-refs.md` porque o `/plan-validate` saiu `clean` na primeira passada (o `/plan-resolve` nunca rodou) e nenhum TD declara `**Libraries:**`.
+
+### Triagem dos follow-ups (2026-10-03)
+
+Prioridade dada à robustez do fluxo de upload/processamento. Cada correção entrou por PR próprio para `dev`, com teste escrito antes da correção.
+
+| # | Follow-up | Decisão | Onde |
+|---|---|---|---|
+| 1 | Partes órfãs sem teto de tamanho | **Adiado.** Exige migration (persistir o tamanho de parte) e assinar `Content-Length`; o risco depende de um usuário autenticado e é limitado pela limpeza de uploads parados do MinIO. Próxima rodada de backend. | — |
+| 2 | Draft preso após `complete` parcial | **Corrigido.** `NoSuchUpload` vira `MultipartUploadNotFoundError`; o `complete` confere o objeto já costurado e segue para a transação (o perdedor de dois completes recebe `409 INVALID_UPLOAD_STATE`); sem objeto → `409 UPLOAD_EXPIRED`. O `abort` tolera o upload ausente e apaga o objeto que tenha sobrado. | PR #9 |
+| 3 | `failure_reason` vaza a linha de comando do ffprobe/ffmpeg | **Corrigido.** `MediaToolError` com mensagem limpa (o que falhou + como o processo saiu); erro desconhecido vira mensagem genérica, o detalhe fica no log. | PR #8 |
+| 4 | Vídeo preso em `processing` | **Corrigido.** Prazo nas ferramentas (90% de `expireInSeconds`); a fila recebe retry/expiração do env a cada boot (`updateQueue`); dead-letter `video.process.dead-letter` real, cujo consumidor marca `failed` o vídeo ainda em `processing`. | PR #10 |
+| 5 | `part_size_bytes` sem teto | **Corrigido.** `@Max(5 GiB)` no DTO → `400` no `POST /videos`. | PR #12 |
+| 6 | Desvios das rules | **Adiado.** Refactor sem mudança de comportamento; tarefa de limpeza própria, para não misturar escopo com correções. | — |
+| 7 | Guia de testes desatualizado (`entities.md`) | **Adiado.** Vai junto com o follow-up 9 do frontend numa tarefa única de docs dos guias de teste. | — |
+
+Verificação de `dev` com os PRs #8–#12: backend 223/223 + E2E 92/92, `tsc` 0.
+
