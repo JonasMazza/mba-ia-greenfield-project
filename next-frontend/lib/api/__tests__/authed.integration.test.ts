@@ -38,10 +38,14 @@ beforeEach(() => {
   cookieMap.clear();
 });
 
+// The BFF remembers a rotation for a few seconds by the refresh token it
+// replaced; a fresh token per sign-in keeps one test's rotation out of the next.
+let signIns = 0;
+
 async function signIn(accessToken = "fixture-access-token") {
   await setSession({
     accessToken,
-    refreshToken: "fixture-refresh-token",
+    refreshToken: `fixture-refresh-token-${++signIns}`,
     userId: "user-1",
     email: "alice@example.com",
     channelSlug: "alice",
