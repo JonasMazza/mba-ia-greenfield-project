@@ -1,7 +1,7 @@
 # phase-03-videos-frontend — Progress
 
 **Status:** in_progress
-**SIs:** 13/17 completed
+**SIs:** 14/17 completed
 
 ### SI-03.1 — Endpoint público de assinatura para URLs voltadas ao browser
 - **Status:** completed
@@ -96,9 +96,11 @@
   - Qualquer requisição que falhe (resposta não-2xx ou erro de rede) encerra o loop em `error`; o snippet não definia política de erro e uma tela descartável não justifica retry com backoff próprio.
 
 ### SI-03.14 — Hook de polling do status de processamento (Verification)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 7 passing (`hooks/__tests__/use-video-status.test.tsx`)
+- **Observations:**
+  - Os fake timers falsificam só `setTimeout`/`clearTimeout`: o scheduler do React e o MSW usam `setImmediate`/microtasks reais, e o teste espera por eles com um `setTimeout` real capturado antes de o relógio ser falsificado — o `vi.waitFor` avançaria o relógio falso e estragaria a medição dos intervalos.
+  - O abort no unmount é verificado pelo `request.signal` que chega ao handler MSW (o fetch interceptado propaga o `AbortSignal`).
 
 ### SI-03.15 — Tela de verificação de upload (`/videos/upload`)
 - **Status:** pending
